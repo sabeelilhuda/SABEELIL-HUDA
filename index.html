@@ -167,7 +167,7 @@ function showErr(m){var d=document.getElementById('dbg')||document.body.insertBe
 d.style.cssText='background:#fee;color:#900;padding:10px;font:14px monospace;white-space:pre-wrap;border-bottom:3px solid #900';d.textContent+=m+'\n';}
 addEventListener('error',function(e){showErr('ERROR: '+e.message)});addEventListener('unhandledrejection',function(e){showErr('ERROR: '+(e.reason&&e.reason.message||e.reason))});
 </script>
-<div id="app"><p style="padding:20px;font-family:sans-serif">Loading portal... (if this stays, check the red error message above)</p></div>
+<div id="app"><div style="padding:40px 20px;text-align:center;font-family:Arial,sans-serif;color:#0b6e4f"><div style="font-size:18px;font-weight:bold;margin-bottom:8px">MADRASATU SABEELIL-HUDA</div><div style="font-size:14px;opacity:.85">Loading portal...</div></div></div>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,updatePassword,createUserWithEmailAndPassword,
@@ -208,7 +208,7 @@ motto:"Sabeelil Huda",mission:"To provide qualitative Islamic and Western educat
 vision:"To be a leading Islamic institution producing morally sound and academically excellent students.",phone:"",
 email:"",address:"",website:"",hours:"",principal:"",programmes:"TAHFIZ CLASS|Memorization of the Holy Qur'an with Tajweed.\nIBTIDA'IYYAH & IDADIYYAH|Religious studies: Hadith, Fiqh and the Arabic language.\nISLAMIYYAH EVENING CLASS|Evening classes for students and staff.",
 rules:"Every student must observe the Islamic dress code.\nPunctuality is very important.",admissionInfo:"New students are admitted at the beginning of each term. Contact the administration office to get a form.",
-admissionText:"and I will be responsible for his/her school fees and other requirements of the school and he/she will abide by the school rules and regulations."}
+admissionText:"and I will be responsible for his/her school fees and other requirements of the school and he/she will abide by the school rules and regulations.",bankName:"",bankAcc:"",bankNameOnAcc:"",bankNote:""}
 ;
 let S={...DEF},me=null,idle,SDOC={};
 const logoBox=(u,t)=>`<div class="header-logo">${u?`<img src="${esc(u)}" alt="">`:t}</div>`;
@@ -239,6 +239,7 @@ const pubNav=()=>Object.entries(PAGES).map(([k,v])=>`<a href="#" data-p="${k}">$
 const wirePub=()=>{A.querySelectorAll('[data-p]').forEach(a=>a.onclick=e=>{e.preventDefault();publicPage(a.dataset.p);
 });A.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>loginPage(b.dataset.l));};
 async function publicPage(p='home'){
+try{history.pushState({view:'public',page:p},'','#/'+(p||'home'));}catch(e){}
 shell(pubNav(),(CONFIGURED?'':'<div class="box err">Firebase is not connected yet. Paste your firebaseConfig at the top of index.html.</div>')+'<div class="box" id="pg">Loading...</div>');
 wirePub();
 const pc=async t=>{try{return (await Promise.race([getDocs(query(collection(db,'content'),where('audience','==',
@@ -275,9 +276,10 @@ else h=`<h2>Contact Us</h2><p>${esc(S.contact)}</p>${S.phone?`<p>📞 <a href="t
 if($('#pg')){$('#pg').innerHTML=h;wirePub();}}
 let tries=0,lockUntil=0;
 function loginPage(kind,note){
+try{history.pushState({view:'login'},'','#/login');}catch(e){}
 const lab='School Email (or ID)';
-shell(pubNav(),`<div class="box"><h2>Portal Login</h2><p>Enter your school email (e.g. sh0001@sabeelilhuda.com) or your ID, and your password. You will be taken to your own dashboard automatically.</p>
-<label>${lab}<input id="id" autocomplete="username" placeholder="sh0001@sabeelilhuda.com"></label><label>Password<input id="pw" type="password" autocomplete="current-password">
+shell(pubNav(),`<div class="box"><h2>Portal Login</h2><p>Student Login: Enter your Student ID (e.g. <b>SH0002</b>) or registered login email (e.g. <b>SH0002@sabeelilhuda.com</b>) and password to access your dashboard.</p>
+<label>${lab}<input id="id" autocomplete="username" placeholder="SH0002 or SH0002@sabeelilhuda.com"></label><label>Password<input id="pw" type="password" autocomplete="current-password">
 </label>
 <label><input type="checkbox" id="sh" style="width:auto"> Show password</label><p class="err" id="er"></p><button class="p" id="go">Login</button>
 <p><a href="#" id="fg">Forgot password?</a></p></div>`);
@@ -288,12 +290,52 @@ try{await sendPasswordResetEmail(auth,v);$('#er').textContent='A password reset 
 };
 $('#go').onclick=async()=>{if(!CONFIGURED)return $('#er').textContent='Firebase is not connected yet. Paste firebaseConfig at the top of index.html.';
 if(Date.now()<lockUntil)return $('#er').textContent="Too many attempts. Wait 5 minutes.";
-try{const raw=$('#id').value.trim().toLowerCase(),pwd=$('#pw').value,cand=raw.includes('@')?[raw]:[raw+'@'+EMAIL_DOMAIN,
-raw+'@sms.portal'];let ok=false;let le;for(const em of cand){try{await signInWithEmailAndPassword(auth,em,pwd);
-ok=true;break;}catch(e2){le=e2;}}if(!ok)throw le;tries=0;}
-catch(e){const c=e&&e.code||'',bad=['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(c);
-if(bad&&++tries>=5){lockUntil=Date.now()+3e5;tries=0;}$('#er').textContent=bad?'Wrong email/ID or password.':c==='auth/operation-not-allowed'?'Email/Password sign-in is not enabled in Firebase Authentication.':c==='auth/network-request-failed'?'No internet connection.':c==='auth/too-many-requests'?'Too many attempts. Wait a few minutes and try again.':c==='auth/unauthorized-domain'?'This web address is not authorized in Firebase (Authentication > Settings > Authorized domains).':c.includes('api-key')?'The apiKey in firebaseConfig is wrong.':'Login error: '+(c||e.message);
-}};}
+try{
+  const raw=$('#id').value.trim(), pwd=$('#pw').value;
+  if(!raw||!pwd) return $('#er').textContent='Enter your ID or email and password.';
+  const lower=raw.toLowerCase();
+  let cand=[];
+  if(raw.includes('@')){
+    cand=[raw, lower];
+  } else {
+    // Pure ID login (Student SH0001 / Teacher TCH0001)
+    const id=lower.replace(/\s+/g,'');
+    cand=[
+      id+'@'+EMAIL_DOMAIN,
+      id+'@sms.portal',
+      raw+'@'+EMAIL_DOMAIN,
+      id.toUpperCase()+'@'+EMAIL_DOMAIN
+    ];
+    // also try common prefix variants
+    if(id.startsWith('sh')||id.startsWith('tch')||id.startsWith('adm')){
+      cand.push(id+'@sabeelilhuda.com');
+    }
+  }
+  // unique
+  cand=[...new Set(cand.filter(Boolean))];
+  let ok=false, le;
+  for(const em of cand){
+    try{
+      await signInWithEmailAndPassword(auth,em,pwd);
+      ok=true; break;
+    }catch(e2){ le=e2; }
+  }
+  if(!ok) throw le;
+  tries=0;
+}catch(e){
+  const code=(e&&e.code)||'';
+  const bad=['auth/invalid-credential','auth/wrong-password','auth/user-not-found','auth/invalid-email'].includes(code);
+  if(bad&&++tries>=5){lockUntil=Date.now()+3e5;tries=0;}
+  let msg='Wrong ID/email or password.';
+  if(code==='auth/operation-not-allowed') msg='Email/Password sign-in is not enabled in Firebase Authentication.';
+  else if(code==='auth/network-request-failed') msg='No internet connection.';
+  else if(code==='auth/too-many-requests') msg='Too many attempts. Wait a few minutes and try again.';
+  else if(code==='auth/unauthorized-domain') msg='This web address is not authorized in Firebase (Authentication > Settings > Authorized domains).';
+  else if(code.includes('api-key')) msg='The apiKey in firebaseConfig is wrong.';
+  else if(code) msg='Login error: '+code;
+  $('#er').textContent=msg;
+}
+};}
 if(!CONFIGURED){theme();publicPage();}else onAuthStateChanged(auth,async u=>{await loadSettings();
 if(!u){me=null;return publicPage();}
 let s;try{s=await getDoc(doc(db,'users',u.uid));}catch(e){await signOut(auth);return loginPage('all','Signed in, but the database refused to read your profile ('+(e.code||e.message)+'). Publish the Firestore Rules, then try again.');
@@ -306,7 +348,20 @@ const bump=()=>{clearTimeout(idle);idle=setTimeout(()=>signOut(auth),30*6e4);};[
 bump));bump();
 if(me.mustChange)return forceChange();
 audit('login',me.role);
+try{history.replaceState({view:'dash',role:me.role},'','#/dashboard');}catch(e){}
 ({student:studentDash,teacher:teacherDash,admin:adminDash,superadmin:adminDash})[me.role]?.();});
+/* Browser Back button: stay inside the portal while authenticated */
+window.addEventListener('popstate',function(ev){
+  if(auth && auth.currentUser && me){
+    // User is still logged in – do not leave the portal or log them out
+    try{history.pushState({view:'dash',role:me.role},'','#/dashboard');}catch(e){}
+    if(me.mustChange) return forceChange();
+    ({student:studentDash,teacher:teacherDash,admin:adminDash,superadmin:adminDash})[me.role]?.();
+  } else if(!auth || !auth.currentUser){
+    // Not logged in – go to public home safely
+    publicPage('home');
+  }
+});
 function forceChange(){shell('',`<div class="box"><h2>Change your temporary password</h2><p>Choose your new permanent password.</p>
 <input id="n" type="password" placeholder="New password (min 8, letters and numbers)"><label><input type="checkbox" id="sp" style="width:auto"> 👁 Show password</label>
 <p class="err" id="er"></p><button class="p" id="s">Save</button></div>`);
@@ -350,7 +405,8 @@ const printBtn=()=>`<button class="p noprint" onclick="print()">Print</button>`;
 const V=h=>$('#v').innerHTML=h;
 function dash(tabs){shell(Object.keys(tabs).map(t=>`<button data-t="${esc(t)}">${esc(t)}</button>`).join('')+out,
 '<div id="v"></div>');wireOut();
-A.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>tabs[b.dataset.t]());Object.values(tabs)[0]();}
+A.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{try{history.pushState({view:'dash',tab:b.dataset.t},'','#/'+encodeURIComponent(b.dataset.t));}catch(e){} tabs[b.dataset.t]();});
+Object.values(tabs)[0]();}
 const dl=(n,t,ty='text/plain')=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{
 type:ty}));a.download=n;a.click();};
 const fmt=x=>typeof x==='number'?new Date(x).toLocaleString():x?.toDate?x.toDate().toLocaleString():(x||'');
@@ -399,12 +455,172 @@ $('#rp').innerHTML=`<div class="sheet" style="overflow:auto"><h3>${esc(S.name)} 
 <tr><th>Name</th>${sb.map(s=>`<th>${esc(s)}</th>`).join('')}<th>Avg</th><th>Pos</th></tr>${us.map(u=>{const r=rs[u.id];
 return `<tr><td>${esc(u.name)}</td>${sb.map(s=>`<td>${r?.rows.find(x=>x.subject===s)?.total??''}</td>`).join('')}<td>${r?.average??''}</td><td>${r?.position??''}</td></tr>`}
 ).join('')}</table></div>`;};}
+
+/* ========== SCHOOL FEES & PAYMENTS SYSTEM ========== */
+async function getApplicableFeeItems(){
+  const sess=S.session||'', term=S.term||'', cl=me.classId||'', secs=me.sections||[];
+  const q=await getDocs(collection(db,'feeItems'));
+  return q.docs.map(d=>({id:d.id,...d.data()})).filter(f=>{
+    if(f.active===false) return false;
+    if(f.classId && f.classId!==cl) return false;
+    if(f.session && sess && f.session!==sess) return false;
+    if(f.term && term && f.term!==term) return false;
+    if(f.sections && f.sections.length){
+      if(!secs.some(s=>f.sections.includes(s))) return false;
+    }
+    return true;
+  }).sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+}
+async function getMyPayments(feeItemId){
+  let q=query(collection(db,'payments'),where('studentUid','==',me.uid));
+  if(feeItemId) q=query(q,where('feeItemId','==',feeItemId));
+  const snap=await getDocs(q);
+  return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0));
+}
+async function studentFees(){
+  V(`<div class="box"><h2>School Fees & Payments</h2>
+  <button class="p" data-f="my">My Fees</button>
+  <button class="p" data-f="up">Upload Payment Receipt</button>
+  <button class="p" data-f="hist">Payment History</button>
+  <button class="p" data-f="stat">Payment Status</button>
+  <div id="feesub" style="margin-top:14px"></div></div>`);
+  const go=async t=>{
+    const sub=$('#feesub');
+    if(t==='my'){
+      sub.innerHTML='<p>Loading fees...</p>';
+      try{
+        const items=await getApplicableFeeItems();
+        const pays=await getMyPayments();
+        if(!items.length){sub.innerHTML='<p>No fees have been published for your class/section/session yet. Contact the Admin.</p>';return;}
+        let html=`<h3>My Fees — ${esc(S.session)} ${esc(S.term)}</h3>
+        <p><b>Bank details (for payment):</b><br>${S.bankName?`Bank: ${esc(S.bankName)}<br>`:''}${S.bankAcc?`Account No: ${esc(S.bankAcc)}<br>`:''}${S.bankNameOnAcc?`Account Name: ${esc(S.bankNameOnAcc)}<br>`:''}${S.bankNote?esc(S.bankNote):''}</p>
+        <table><tr><th>Fee</th><th>Amount Due</th><th>Paid (Approved)</th><th>Outstanding</th><th>Status</th></tr>`;
+        for(const f of items){
+          const approved=pays.filter(p=>p.feeItemId===f.id && p.status==='approved');
+          const paid=approved.reduce((s,p)=>s+(+p.amount||0),0);
+          const due=+f.amount||0;
+          const out=Math.max(0,due-paid);
+          const pending=pays.some(p=>p.feeItemId===f.id && p.status==='pending');
+          let st='UNPAID';
+          if(paid>=due && due>0) st='PAID';
+          else if(paid>0) st='PARTIALLY PAID';
+          if(pending) st+=' (pending receipt)';
+          html+=`<tr><td>${esc(f.title)}${f.description?`<br><small>${esc(f.description)}</small>`:''}</td><td>${due.toLocaleString()}</td><td>${paid.toLocaleString()}</td><td>${out.toLocaleString()}</td><td><b>${st}</b></td></tr>`;
+        }
+        html+='</table><p class="err">Only approved payments reduce the outstanding balance. Pending receipts wait for Admin verification.</p>';
+        sub.innerHTML=html;
+      }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+    }else if(t==='up'){
+      sub.innerHTML='Loading...';
+      try{
+        const items=await getApplicableFeeItems();
+        if(!items.length){sub.innerHTML='<p>No published fees for you yet.</p>';return;}
+        sub.innerHTML=`<h3>Upload Payment Receipt</h3>
+        <label>Select Fee<select id="fid">${items.map(f=>`<option value="${esc(f.id)}">${esc(f.title)} (₦${(+f.amount||0).toLocaleString()})</option>`).join('')}</select></label>
+        <label>Amount Paid<input id="amt" type="number" min="1" step="1" placeholder="Amount you paid"></label>
+        <label>Transaction Reference / Teller No<input id="ref" placeholder="e.g. TRX123456 or bank teller number"></label>
+        <label>Payment Date<input id="pdt" type="date"></label>
+        <label>Receipt Photo / Screenshot<input type="file" id="rfile" accept="image/*"></label>
+        <p class="err" id="uer"></p>
+        <button class="p" id="usub">Submit for Verification</button>
+        <p>After upload, status will be Pending until Admin approves or rejects it. Do not upload the same receipt twice.</p>`;
+        $('#usub').onclick=async()=>{
+          const fid=$('#fid').value, amt=+$('#amt').value, ref=$('#ref').value.trim(), pdt=$('#pdt').value, file=$('#rfile').files[0];
+          if(!fid||!amt||amt<=0)return $('#uer').textContent='Enter a valid amount.';
+          if(!ref)return $('#uer').textContent='Enter transaction reference.';
+          if(!pdt)return $('#uer').textContent='Select payment date.';
+          if(!file)return $('#uer').textContent='Choose a receipt image.';
+          if(file.size>8e6)return $('#uer').textContent='Image too large (max ~8MB).';
+          $('#uer').textContent='Uploading...';
+          try{
+            const item=items.find(x=>x.id===fid);
+            let url='';
+            try{
+              const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+              const storage=m.getStorage(app);
+              const path=`receipts/${me.uid}/${Date.now()}_${(file.name||'receipt').replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+              const r=m.ref(storage,path);
+              await m.uploadBytes(r,file,{contentType:file.type||'image/jpeg'});
+              url=await m.getDownloadURL(r);
+            }catch(se){
+              // fallback compressed data URL (still works, stored in Firestore)
+              url=await shrink(file,900,false);
+            }
+            const docRef=doc(collection(db,'payments'));
+            await setDoc(docRef,{
+              studentUid:me.uid, feeItemId:fid, amount:amt, reference:ref, payDate:pdt,
+              receiptURL:url, status:'pending', reason:'', submittedAt:Date.now(),
+              reviewedAt:null, reviewedBy:'', studentLoginId:me.loginId||'', studentName:me.name||'',
+              classId:me.classId||'', session:item.session||S.session||'', term:item.term||S.term||'',
+              feeTitle:item.title||'', feeAmount:+item.amount||0
+            });
+            await audit('paymentSubmit', me.loginId+' '+amt);
+            $('#uer').style.color='#0b6e4f';
+            $('#uer').textContent='Receipt submitted successfully. Status: Pending Admin verification.';
+            setTimeout(()=>go('hist'),1500);
+          }catch(e){$('#uer').textContent='Upload failed: '+(e.message||e.code||e);}
+        };
+      }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+    }else if(t==='hist'||t==='stat'){
+      sub.innerHTML='Loading history...';
+      try{
+        const pays=await getMyPayments();
+        if(!pays.length){sub.innerHTML='<p>No payment records yet.</p>';return;}
+        let html=`<h3>Payment History & Status</h3><table><tr><th>Date</th><th>Fee</th><th>Amount</th><th>Reference</th><th>Status</th><th></th></tr>`;
+        for(const p of pays){
+          const st=p.status||'pending';
+          const col=st==='approved'?'#0b6e4f':st==='rejected'?'#b00020':'#b8860b';
+          html+=`<tr><td>${esc(p.payDate||fmt(p.submittedAt))}</td><td>${esc(p.feeTitle)}</td><td>${(+p.amount||0).toLocaleString()}</td><td>${esc(p.reference)}</td><td style="color:${col};font-weight:bold">${esc(st.toUpperCase())}${p.reason?' — '+esc(p.reason):''}</td>
+          <td>${p.receiptURL?`<button data-v="${esc(p.id)}">View Receipt</button>`:''} ${st==='approved'?`<button data-pr="${esc(p.id)}">Print Receipt</button>`:''}</td></tr>`;
+        }
+        html+='</table><div id="rprev"></div>';
+        sub.innerHTML=html;
+        A.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
+          const p=pays.find(x=>x.id===b.dataset.v);
+          if(!p)return;
+          $('#rprev').innerHTML=`<div class="box"><h3>Receipt Image</h3><img src="${esc(p.receiptURL)}" alt="Receipt" style="max-width:100%;border:1px solid #ccc"><p>Ref: ${esc(p.reference)} | Amount: ${(+p.amount||0).toLocaleString()} | Status: ${esc(p.status)}</p><button class="p" onclick="$('#rprev').innerHTML=''">Close</button></div>`;
+        });
+        A.querySelectorAll('[data-pr]').forEach(b=>b.onclick=()=>{
+          const p=pays.find(x=>x.id===b.dataset.pr);
+          if(!p)return;
+          $('#rprev').innerHTML=officialReceiptHTML(p)+printBtn()+' '+pdfBtn();
+        });
+      }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+    }
+  };
+  A.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>go(b.dataset.f));
+  go('my');
+}
+function officialReceiptHTML(p){
+  return `<div class="sheet"><h3 class="ar">${esc(S.arabic)}</h3><h3>${esc(S.name)}<br>${esc(S.sub)}<br>OFFICIAL PAYMENT RECEIPT</h3>
+  <table><tr><td>Student Name:</td><td><b>${esc(p.studentName||me.name)}</b></td></tr>
+  <tr><td>Student No:</td><td>${esc(p.studentLoginId||me.loginId)}</td></tr>
+  <tr><td>Class:</td><td>${esc(p.classId||me.classId)}</td></tr>
+  <tr><td>Fee:</td><td>${esc(p.feeTitle)}</td></tr>
+  <tr><td>Session / Term:</td><td>${esc(p.session)} ${esc(p.term)}</td></tr>
+  <tr><td>Amount Paid:</td><td><b>₦${(+p.amount||0).toLocaleString()}</b></td></tr>
+  <tr><td>Transaction Ref:</td><td>${esc(p.reference)}</td></tr>
+  <tr><td>Payment Date:</td><td>${esc(p.payDate)}</td></tr>
+  <tr><td>Status:</td><td><b style="color:#0b6e4f">APPROVED</b></td></tr>
+  <tr><td>Receipt No:</td><td>${esc(p.id)}</td></tr></table>
+  <p style="margin-top:12px">This is an official computer-generated receipt of ${esc(S.name)}. Verified by the school administration.</p>
+  <p>Signature / Stamp: ..............................</p></div>`;
+}
+/* ========== END FEES (student) ========== */
 function studentDash(){const rp=async()=>(await getDocs(query(collection(db,'reports'),where('uid','==',me.uid)))).docs.map(d=>d.data());
 
 dash({Overview:async()=>{const r=await rp(),l=r[r.length-1]||{},q=await getDocs(query(collection(db,'attendance'),
 where('uid','==',me.uid))),p=q.docs.filter(d=>d.data().status==='P').length;
-V(`<div class="box"><h2>Welcome, ${esc(me.name)}</h2><p>Student No: ${esc(me.loginId)} | Class: ${esc(me.classId||'Not assigned yet')}</p><p>Sections: ${esc(secsOf(me)||'-')}</p><p>Average: ${l.average??'-'}</p><p>Attendance: ${p}/${q.size} days present</p>
-</div>`);},
+V(`<div class="box"><h2>Welcome, ${esc(me.name)}</h2>
+<div id="stovphoto" style="margin-bottom:12px"></div>
+<p><b>Student ID:</b> ${esc(me.loginId)}</p>
+<p><b>Class:</b> ${esc(me.classId||'Not assigned yet')}</p>
+<p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
+<p><b>Session / Term:</b> ${esc(me.session||S.session||'—')} ${esc(me.term||S.term||'')}</p>
+<p><b>Average:</b> ${l.average??'—'}</p>
+<p><b>Attendance:</b> ${p} present out of ${q.size} recorded day(s)</p>
+</div>`);
+photoUI(me.uid,'#stovphoto');},
 Profile:()=>{V(`<div class="box"><h2>My Profile / BioData</h2><div id="pbox"></div><p>${esc(me.name)} — ${esc(me.loginId)} — ${esc(me.classId)}</p>${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}<p><b>Sections:</b> ${esc(secsOf(me))}</p>${me.session?`<p><b>Academic session:</b> ${esc(me.session)} ${esc(me.term||'')}</p>`:''}${kv(me.bio)}${histHTML(me)}</div>`);photoUI(me.uid,'#pbox');},
 'Admission Letter':async()=>{if(!me.classId)return V('<div class="box">Your class has not been assigned yet.</div>');V('<div class="box">Loading...</div>');V(admissionHTML(await withPhoto(me,me.uid))+printBtn()+' '+pdfBtn());},
 
@@ -415,20 +631,162 @@ Results:async()=>{const r=await rp();V(r.map(x=>`<div class="box"><h3>${esc(x.se
 },
 'Report Card':async()=>{const r=await rp();V(r.length?r.map(x=>reportHTML(me,x)).join('')+printBtn()+' '+pdfBtn():'<div class="box">No published report yet.</div>');
 },
+'Academic History':async()=>{
+  const r=await rp();
+  if(!r.length) return V('<div class="box"><h2>Academic History</h2><p>No published results or report cards yet.</p></div>');
+  // group by session then term
+  const groups={};
+  r.forEach(x=>{
+    const sk=x.session||'Unknown Session';
+    const tk=x.term||'Unknown Term';
+    groups[sk]=groups[sk]||{};
+    groups[sk][tk]=groups[sk][tk]||[];
+    groups[sk][tk].push(x);
+  });
+  let html=`<div class="box"><h2>Academic History</h2>
+  <p>All published results and report cards for previous and current sessions. Select a term to view or print the official report card.</p>`;
+  const sessions=Object.keys(groups).sort().reverse();
+  for(const se of sessions){
+    html+=`<h3 style="margin-top:16px;color:var(--green)">${esc(se)}</h3>`;
+    for(const tm of Object.keys(groups[se])){
+      const items=groups[se][tm];
+      items.forEach((x,i)=>{
+        html+=`<div class="box" style="border-left:4px solid var(--blue)">
+        <p><b>${esc(tm)}</b> — Class: ${esc(x.classId||me.classId||'—')} — Average: <b>${x.average??'—'}</b> — Position: ${x.position??'—'}</p>
+        <button class="p" data-hist="${se}||${tm}||${i}">View / Print Report Card</button>
+        <button class="p" data-res="${se}||${tm}||${i}">View Subject Results</button>
+        </div>`;
+      });
+    }
+  }
+  html+='<div id="histview"></div></div>';
+  V(html);
+  A.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>{
+    const [se,tm,i]=b.dataset.hist.split('||');
+    const x=groups[se][tm][+i];
+    $('#histview').innerHTML=reportHTML(me,x)+printBtn()+' '+pdfBtn();
+    $('#histview').scrollIntoView({behavior:'smooth'});
+  });
+  A.querySelectorAll('[data-res]').forEach(b=>b.onclick=()=>{
+    const [se,tm,i]=b.dataset.res.split('||');
+    const x=groups[se][tm][+i];
+    $('#histview').innerHTML=`<div class="box"><h3>${esc(se)} ${esc(tm)} — Average ${x.average}</h3>
+    <table><tr><th>Subject</th><th>C.A</th><th>Exam</th><th>Total</th><th>Grade</th><th>Remark</th></tr>
+    ${(x.rows||[]).map(y=>`<tr><td>${esc(y.subject)}</td><td>${y.ca}</td><td>${y.exam}</td><td>${y.total}</td><td>${y.grade}</td><td>${esc(y.remark)}</td></tr>`).join('')}
+    </table></div>`;
+    $('#histview').scrollIntoView({behavior:'smooth'});
+  });
+},
 Attendance:async()=>{const q=await getDocs(query(collection(db,'attendance'),where('uid','==',me.uid)));V(`<div class="box">
 <h2>My Attendance</h2>${q.docs.map(d=>`${esc(d.data().date)}: ${d.data().status}`).join('<br>')||'None yet'}</div>`);
 },
 Timetable:()=>inbox(['timetable']),Calendar:()=>inbox(['event']),Messages:()=>inbox(['announcement','message',
-'news','document','fee']),'Change Password':account});}
+'news','document','fee']),'School Fees & Payments':studentFees,'Change Password':account});}
+
+/* ========== TEACHER PROFILE & BANK DETAILS ========== */
+
+async function teacherPerformance(){
+  V(`<div class="box"><h2>Student Performance (my classes)</h2>
+  <p>Summary of published report averages for classes you teach. Detailed reports are under the Reports tab.</p>
+  <div id="tperf">Loading...</div></div>`);
+  try{
+    const cls=me.classes||[];
+    if(!cls.length){ $('#tperf').innerHTML='<p>No classes assigned.</p>'; return; }
+    const snaps=await Promise.all(cls.map(cl=>getDocs(query(collection(db,'reports'),where('classId','==',cl)))));
+    let html='';
+    cls.forEach((cl,i)=>{
+      const rows=snaps[i].docs.map(d=>d.data());
+      if(!rows.length){ html+=`<p><b>${esc(cl)}</b>: No published reports yet.</p>`; return; }
+      const avgs=rows.map(r=>+r.average||0);
+      const avg=(avgs.reduce((a,b)=>a+b,0)/avgs.length).toFixed(1);
+      const hi=Math.max(...avgs), lo=Math.min(...avgs);
+      html+=`<div class="stat" style="margin-bottom:10px"><h3>${esc(cl)}</h3>
+      <p>Students with reports: ${rows.length} | Class average: <b>${avg}</b> | Highest: ${hi} | Lowest: ${lo}</p></div>`;
+    });
+    $('#tperf').innerHTML=html||'<p>No data.</p>';
+  }catch(e){ $('#tperf').innerHTML=`<p class="err">${esc(e.message)}</p>`; }
+}
+function teacherProfile(){
+  V(`<div class="box"><h2>My Profile</h2>
+  <div id="pbox"></div>
+  <p><b>Name:</b> ${esc(me.name)}</p>
+  <p><b>Teacher ID:</b> ${esc(me.loginId)}</p>
+  <p><b>Role:</b> Teacher</p>
+  <p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
+  <p><b>Assigned classes & subjects:</b></p>
+  <ul>${(me.teaching||[]).map(t=>`<li>${esc(t.replace('|',' — '))}</li>`).join('')||'<li>None assigned yet</li>'}</ul>
+  ${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}
+  </div>`);
+  photoUI(me.uid,'#pbox');
+}
+async function teacherBank(){
+  V(`<div class="box"><h2>My Bank Details (for salary)</h2>
+  <p>Submit or update your bank details securely. Only school Admins can view this information for salary processing. Students cannot see it.</p>
+  <div id="tbform">Loading...</div></div>`);
+  let cur={};
+  try{
+    const d=await getDoc(doc(db,'teacherBanks',me.uid));
+    if(d.exists()) cur=d.data();
+  }catch(e){}
+  $('#tbform').innerHTML=`
+  <label>Bank Name<input id="tb_bank" value="${esc(cur.bankName||'')}" placeholder="e.g. First Bank, Zenith, UBA"></label>
+  <label>Account Name<input id="tb_name" value="${esc(cur.accountName||'')}" placeholder="Name as it appears on the account"></label>
+  <label>Account Number<input id="tb_num" value="${esc(cur.accountNumber||'')}" placeholder="10-digit account number"></label>
+  <label>Bank Code / Sort Code (optional)<input id="tb_code" value="${esc(cur.bankCode||'')}"></label>
+  <label>Extra note (optional)<textarea id="tb_note" rows="2">${esc(cur.note||'')}</textarea></label>
+  <p class="err" id="tber"></p>
+  <button class="p" id="tbsv">Save Bank Details</button>
+  <p style="margin-top:10px;font-size:13px;color:#666">Last updated: ${cur.updatedAt?esc(fmt(cur.updatedAt)):'Never'}</p>`;
+  $('#tbsv').onclick=async()=>{
+    const bankName=$('#tb_bank').value.trim(), accountName=$('#tb_name').value.trim(), accountNumber=$('#tb_num').value.trim().replace(/\s/g,''), bankCode=$('#tb_code').value.trim(), note=$('#tb_note').value.trim();
+    if(!bankName||!accountName||!accountNumber) return $('#tber').textContent='Bank name, account name and account number are required.';
+    if(!/^\d{10}$/.test(accountNumber) && !/^\d{9,12}$/.test(accountNumber)) return $('#tber').textContent='Account number should be 9–12 digits.';
+    try{
+      await setDoc(doc(db,'teacherBanks',me.uid),{
+        bankName, accountName, accountNumber, bankCode, note,
+        teacherUid:me.uid, loginId:me.loginId||'', name:me.name||'',
+        updatedAt:Date.now(), updatedBy:me.uid
+      },{merge:true});
+      await audit('teacherBankUpdate',me.loginId);
+      $('#tber').style.color='#0b6e4f';
+      $('#tber').textContent='Bank details saved successfully.';
+    }catch(e){$('#tber').textContent='Could not save: '+(e.message||e.code);}
+  };
+}
+/* ========== END TEACHER PROFILE & BANK ========== */
 function teacherDash(){const cls=me.classes||[];
-dash({Overview:()=>V(`<div class="box"><h2>Welcome, ${esc(me.name)}</h2><p>Teacher ID: ${esc(me.loginId)}</p><p>Sections: ${esc(secsOf(me)||'-')}</p></div>`),
-
-'Classes & Subjects':()=>V(`<div class="box"><h2>My assigned classes & subjects</h2><ul>${(me.teaching||[]).map(t=>`<li>${esc(t.replace('|',
-' — '))}</li>`).join('')}</ul></div>`),
+dash({Overview:()=>{
+  V(`<div class="box"><h2>Welcome, ${esc(me.name)}</h2>
+  <div id="tchovphoto" style="margin-bottom:12px"></div>
+  <p><b>Teacher ID:</b> ${esc(me.loginId)}</p>
+  <p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
+  <p><b>Assigned classes:</b> ${(me.classes||[]).map(esc).join(', ')||'—'}</p>
+  </div>`);
+  photoUI(me.uid,'#tchovphoto');
+},
+'Classes & Subjects':()=>V(`<div class="box"><h2>My assigned classes & subjects</h2><ul>${(me.teaching||[]).map(t=>`<li>${esc(t.replace('|',' — '))}</li>`).join('')}</ul></div>`),
 Marks:tMarks,'My Results':tMine,Students:tStudents,Reports:()=>reportsView(cls),Attendance:()=>attMark(cls),Comments:tComments,
-
-Messages:()=>inbox(['announcement','message','event','news','timetable','document']),'Change Password':account}
-);}
+Messages:()=>inbox(['announcement','message','event','news','timetable','document']),
+'Notifications':()=>inbox(['announcement','message','news']),
+'School Calendar':()=>inbox(['event']),
+'Exam Timetable':()=>inbox(['timetable']),
+'Assignments':()=>inbox(['assignment']),
+'Learning Materials':()=>inbox(['material','document']),
+'Lesson Notes':()=>inbox(['lesson']),
+'Student Performance':teacherPerformance,
+'Help & Support':()=>V(`<div class="box"><h2>Help & Support</h2>
+<p>For technical issues with the portal contact the developer:</p>
+<p><b>MMSAYAYA</b><br>📞 <a href="tel:08135299324">08135299324</a></p>
+<p>For school-related questions (results, attendance, salary) contact the school Admin.</p>
+<p>Use <b>Messages</b> to receive official announcements from the school.</p></div>`),
+'Salary Info':()=>V(`<div class="box"><h2>Salary & Payment Info</h2>
+<p>Your bank details for salary are managed under <b>My Bank Details</b>.</p>
+<p>Full salary payment history and slips are processed by the school Admin. Contact Admin if you need a payment record or pay slip.</p>
+<p>Update your bank details regularly so salary can be paid correctly.</p></div>`),
+'My Profile':teacherProfile,
+'My Bank Details':teacherBank,
+'Change Password':account});
+}
 async function tMine(){const q=await getDocs(query(collection(db,'results'),where('teacherUid','==',me.uid))),
 g={};q.docs.forEach(d=>{const x=d.data(),k=[x.session,x.term,x.classId,x.subject,x.status].join(' | ');g[k]=(g[k]||0)+1;
 });
@@ -524,7 +882,7 @@ ${isS?`<input id="cl" placeholder="Class"><input id="sj" placeholder="Subjects (
 <p id="er"></p></div>
 <div class="box"><input id="sq" placeholder="Search by name or ID"><button class="p" id="xl">Export list (CSV)</button><table id="tb"><tr><th>ID</th><th>Name</th>
 <th>Class</th><th>Sections</th>${isS?'<th>Status</th>':''}<th></th></tr>${q.docs.map(d=>{const x=d.data();return `<tr data-s="${esc((x.loginId+' '+x.name).toLowerCase())}"><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.classId)}</td><td>${esc(secsOf(x))}</td>${isS?`<td>${esc(statusOf(x))}</td>`:''}
-<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button></td></tr>`}).join('')}</table>
+<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button></td></tr>`}).join('')}</table>
 <div id="pv"></div></div>`);
 A.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{
 $('#pv').innerHTML=admissionHTML(await withPhoto(U[b.dataset.ad],b.dataset.ad))+printBtn()+' '+pdfBtn();
@@ -540,6 +898,16 @@ try{const r=await makeAccount(d);$('#er').textContent=`ID: ${r.loginId} | School
 A.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{const u=U[b.dataset.v];alert(JSON.stringify({id:u.loginId,
 email:u.email,name:u.name,class:u.classId,subjects:u.subjects,teaching:u.teaching,sections:(u.sections||[]).map(secName),status:isS?statusOf(u):undefined,session:u.session,term:u.term,classHistory:u.classHistory,bio:u.bio,active:u.active},null,
 1));});
+A.querySelectorAll('[data-bk]').forEach(b=>b.onclick=async()=>{
+  const id=b.dataset.bk, u=U[id];
+  try{
+    const d=await getDoc(doc(db,'teacherBanks',id));
+    const x=d.exists()?d.data():{};
+    $('#pv').innerHTML=`<div class="box"><h3>Bank Details — ${esc(u.name)} (${esc(u.loginId)})</h3>
+    ${d.exists()?`<p><b>Bank:</b> ${esc(x.bankName)}</p><p><b>Account Name:</b> ${esc(x.accountName)}</p><p><b>Account Number:</b> ${esc(x.accountNumber)}</p><p><b>Bank Code:</b> ${esc(x.bankCode||'—')}</p><p><b>Note:</b> ${esc(x.note||'—')}</p><p><small>Last updated: ${esc(fmt(x.updatedAt))}</small></p>`:'<p class="err">This teacher has not submitted bank details yet.</p>'}
+    <button class="p" onclick="$('#pv').innerHTML=''">Close</button></div>`;
+  }catch(e){$('#pv').innerHTML=`<div class="box err">${esc(e.message)}</div>`;}
+});
 A.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const id=b.dataset.m,u=U[id],bi=u.bio||{},fld=(k,l,v,
 ph)=>`<label>${l}<input id="e_${k}" value="${esc(v)}" ${ph?`placeholder="${esc(ph)}"`:''}></label>`;
  $('#pv').innerHTML=`<div class="box"><h3>Edit ${esc(u.loginId)} ${u.email?'('+esc(u.email)+')':''}</h3>${fld('nm',
@@ -609,10 +977,146 @@ t=prompt('Title',x.title);if(t===null)return;const bd=prompt('Text',x.body),dt=p
 au=prompt('Send to (public / all / students / teachers / class:Primary 1 / uid:...)',x.audience),u={title:t,body:bd??x.body,
 date:dt??(x.date||''),audience:(au||x.audience).trim()};if(x.type==='fee'){u.amount=+prompt('Amount',x.amount)||0;
 u.paid=+prompt('Paid',x.paid)||0;}try{await updateDoc(r,u);}catch(e){alert(e.message);}cm(types,title);});}
-async function aFees(){await cm(['fee'],'School Fees: categories, payments, balances');const q=await getDocs(query(collection(db,
-'content'),where('type','==','fee')));let a=0,p=0;q.forEach(d=>{a+=d.data().amount||0;p+=d.data().paid||0;});
-$('#v').insertAdjacentHTML('beforeend',`<div class="box"><b>Fee report:</b> Total ${a} | Paid ${p} | Outstanding ${a-p}</div>`);
+async function aFees(){
+  // Bank details + Fee items + Pending receipts verification + Summary
+  V(`<div class="box"><h2>22. FEES & PAYMENTS</h2>
+  <button class="p" data-af="bank">Bank Account Details</button>
+  <button class="p" data-af="items">Set / Publish Fees by Class</button>
+  <button class="p" data-af="pending">Verify Receipts (Pending)</button>
+  <button class="p" data-af="all">All Payments</button>
+  <button class="p" data-af="legacy">Legacy Fee Announcements</button>
+  <div id="afeesub" style="margin-top:14px"></div></div>`);
+  const sub=$('#afeesub');
+  const render=async mode=>{
+    if(mode==='bank'){
+      sub.innerHTML=`<h3>School Bank Account Details</h3>
+      <p>Students will see these details when viewing My Fees and before uploading a receipt.</p>
+      <label>Bank Name<input id="bn" value="${esc(S.bankName||'')}"></label>
+      <label>Account Number<input id="ba" value="${esc(S.bankAcc||'')}"></label>
+      <label>Account Name<input id="bna" value="${esc(S.bankNameOnAcc||'')}"></label>
+      <label>Extra instructions / note<textarea id="bnote" rows="3">${esc(S.bankNote||'')}</textarea></label>
+      <button class="p" id="bsv">Save Bank Details</button><p id="ber"></p>`;
+      $('#bsv').onclick=async()=>{
+        try{
+          const n={bankName:$('#bn').value.trim(),bankAcc:$('#ba').value.trim(),bankNameOnAcc:$('#bna').value.trim(),bankNote:$('#bnote').value.trim()};
+          await setDoc(doc(db,'settings/school'),n,{merge:true});
+          Object.assign(S,n);Object.assign(SDOC,n);
+          await audit('bankDetails');
+          $('#ber').style.color='#0b6e4f';$('#ber').textContent='Saved.';
+        }catch(e){$('#ber').textContent=e.message;}
+      };
+    }else if(mode==='items'){
+      sub.innerHTML='Loading fee items...';
+      try{
+        const snap=await getDocs(collection(db,'feeItems'));
+        const items=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((b.at||0)-(a.at||0)));
+        const secs=(S.sections||[]).filter(x=>x.active!==false);
+        sub.innerHTML=`<h3>Set Fees by Class / Section / Session / Term</h3>
+        <p>Create a fee item and it becomes visible to matching students. Leave Sections empty = all sections of that class.</p>
+        <label>Title / Description of fee<input id="ft" placeholder="e.g. School Fees - First Term"></label>
+        <label>Amount (₦)<input id="fam" type="number" min="0" step="1"></label>
+        <label>Class<select id="fcl"><option value="">— select —</option>${lines(S.classes).map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
+        <label>Sections (optional, multi)<select id="fsec" multiple size="3">${secs.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>
+        <label>Session<input id="fse" value="${esc(S.session)}" list="dl_ses"></label>
+        <label>Term<input id="ftm" value="${esc(S.term)}" list="dl_trm"></label>
+        <label>Extra note<textarea id="fdesc" rows="2"></textarea></label>
+        <label><input type="checkbox" id="fact" checked style="width:auto"> Active (published to students)</label>
+        <button class="p" id="fadd">Add / Publish Fee</button><p id="fer"></p>
+        <h4>Existing fee items</h4>
+        <table id="fit"><tr><th>Title</th><th>Class</th><th>Session/Term</th><th>Amount</th><th>Active</th><th></th></tr>
+        ${items.map(f=>`<tr><td>${esc(f.title)}</td><td>${esc(f.classId)}</td><td>${esc(f.session)} ${esc(f.term)}</td><td>${(+f.amount||0).toLocaleString()}</td><td>${f.active!==false?'Yes':'No'}</td>
+        <td><button data-tog="${f.id}" data-on="${f.active===false?1:0}">${f.active===false?'Activate':'Deactivate'}</button> <button data-del="${f.id}">Delete</button></td></tr>`).join('')||'<tr><td colspan="6">None yet</td></tr>'}
+        </table>`;
+        $('#fadd').onclick=async()=>{
+          const title=$('#ft').value.trim(), amount=+$('#fam').value, classId=$('#fcl').value, session=$('#fse').value.trim(), term=$('#ftm').value.trim(), description=$('#fdesc').value.trim(), active=$('#fact').checked;
+          const sections=[...$('#fsec').selectedOptions].map(o=>o.value);
+          if(!title||!classId||!(amount>=0))return $('#fer').textContent='Title, class and amount are required.';
+          try{
+            await setDoc(doc(collection(db,'feeItems')),{title,amount,classId,sections,session,term,description,active,by:me.uid,at:Date.now()});
+            await audit('addFeeItem',title+' '+classId);
+            $('#fer').style.color='#0b6e4f';$('#fer').textContent='Fee published.';
+            render('items');
+          }catch(e){$('#fer').textContent=e.message;}
+        };
+        A.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{
+          try{await updateDoc(doc(db,'feeItems',b.dataset.tog),{active:b.dataset.on==='1'});render('items');}catch(e){alert(e.message);}
+        });
+        A.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+          if(!confirm('Delete this fee item? Existing payments remain.'))return;
+          try{await deleteDoc(doc(db,'feeItems',b.dataset.del));await audit('delFeeItem',b.dataset.del);render('items');}catch(e){alert(e.message);}
+        });
+      }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+    }else if(mode==='pending'||mode==='all'){
+      sub.innerHTML='Loading payments...';
+      try{
+        let q=collection(db,'payments');
+        if(mode==='pending') q=query(q,where('status','==','pending'));
+        const snap=await getDocs(q);
+        const pays=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0));
+        if(!pays.length){sub.innerHTML=`<p>No ${mode==='pending'?'pending receipts':'payments'} found.</p>`;return;}
+        let html=`<h3>${mode==='pending'?'Pending Receipts — Verify':'All Payments'}</h3>
+        <table><tr><th>Submitted</th><th>Student</th><th>Fee</th><th>Amount</th><th>Ref</th><th>Status</th><th></th></tr>`;
+        for(const p of pays){
+          const col=p.status==='approved'?'#0b6e4f':p.status==='rejected'?'#b00020':'#b8860b';
+          html+=`<tr><td>${esc(fmt(p.submittedAt))}</td><td>${esc(p.studentName)} (${esc(p.studentLoginId)})<br><small>${esc(p.classId)}</small></td>
+          <td>${esc(p.feeTitle)}</td><td>${(+p.amount||0).toLocaleString()}</td><td>${esc(p.reference)}</td>
+          <td style="color:${col};font-weight:bold">${esc((p.status||'').toUpperCase())}${p.reason?'<br><small>'+esc(p.reason)+'</small>':''}</td>
+          <td><button data-view="${p.id}">View Receipt</button>
+          ${p.status==='pending'?` <button data-ok="${p.id}">Approve</button> <button data-no="${p.id}">Reject</button>`:''}</td></tr>`;
+        }
+        html+='</table><div id="aprev"></div>';
+        sub.innerHTML=html;
+        const map=Object.fromEntries(pays.map(p=>[p.id,p]));
+        A.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+          const p=map[b.dataset.view];
+          $('#aprev').innerHTML=`<div class="box"><h3>Receipt — ${esc(p.studentName)}</h3>
+          <img src="${esc(p.receiptURL)}" alt="Receipt" style="max-width:100%;max-height:70vh;border:1px solid #ccc">
+          <p>Amount: ₦${(+p.amount||0).toLocaleString()} | Ref: ${esc(p.reference)} | Date: ${esc(p.payDate)}</p>
+          <button class="p" onclick="$('#aprev').innerHTML=''">Close</button></div>`;
+        });
+        A.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{
+          if(!confirm('Approve this payment? It will update the student balance.'))return;
+          try{
+            const ref=doc(db,'payments',b.dataset.ok);
+            const cur=await getDoc(ref);
+            if(!cur.exists()||cur.data().status!=='pending')throw Error('Already processed or missing.');
+            await updateDoc(ref,{status:'approved',reviewedAt:Date.now(),reviewedBy:me.uid,reason:''});
+            await audit('paymentApprove',b.dataset.ok);
+            alert('Approved. Student balance will reflect this payment.');
+            render(mode);
+          }catch(e){alert(e.message);}
+        });
+        A.querySelectorAll('[data-no]').forEach(b=>b.onclick=async()=>{
+          const reason=prompt('Reason for rejection (shown to student):','Invalid or unclear receipt');
+          if(reason===null)return;
+          try{
+            const ref=doc(db,'payments',b.dataset.no);
+            const cur=await getDoc(ref);
+            if(!cur.exists()||cur.data().status!=='pending')throw Error('Already processed or missing.');
+            await updateDoc(ref,{status:'rejected',reviewedAt:Date.now(),reviewedBy:me.uid,reason:reason||'Rejected'});
+            await audit('paymentReject',b.dataset.no);
+            alert('Rejected.');
+            render(mode);
+          }catch(e){alert(e.message);}
+        });
+      }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+    }else if(mode==='legacy'){
+      // keep original content-based fees announcements
+      await cm(['fee'],'Legacy Fee Announcements (categories & notes)');
+      // also summary from structured
+      try{
+        const [fi,pay]=await Promise.all([getDocs(collection(db,'feeItems')),getDocs(collection(db,'payments'))]);
+        let totalDue=0, totalApproved=0;
+        fi.forEach(d=>{if(d.data().active!==false)totalDue+=(+d.data().amount||0);}); // rough
+        pay.forEach(d=>{if(d.data().status==='approved')totalApproved+=(+d.data().amount||0);});
+        $('#v').insertAdjacentHTML('beforeend',`<div class="box"><b>Structured fees summary:</b> Published fee items: ${fi.size} | Total approved payments collected: ₦${totalApproved.toLocaleString()}</div>`);
+      }catch(e){}
+    }
+  };
+  A.querySelectorAll('[data-af]').forEach(b=>b.onclick=()=>render(b.dataset.af));
+  render('pending');
 }
+
 async function aAnal(){const r=(await getDocs(collection(db,'reports'))).docs.map(d=>d.data()),bc={},bs={};
 r.forEach(x=>{(bc[x.classId]=bc[x.classId]||[]).push(x.average);x.rows.forEach(y=>(bs[y.subject]=bs[y.subject]||[]).push(y.total));
 });
@@ -624,7 +1128,7 @@ $('#ex').onclick=()=>dl('reports.csv',['uid,class,session,term,average,position'
 x.session,x.term,x.average,x.position].join(','))].join('\n'),'text/csv');}
 const INFO_F=[['name','School name'],['arabic','Arabic name'],['sub','Sub-title / address line'],['motto','Motto'],
 ['phone','Phone'],['email','Email'],['address','Address'],['website','Website'],['hours','Opening hours'],['principal',
-'Principal / Head']];
+'Principal / Head'],['bankName','Bank Name'],['bankAcc','Bank Account Number'],['bankNameOnAcc','Account Name'],['bankNote','Bank payment instructions']];
 const INFO_A=[['about','About the school'],['mission','Mission'],['vision','Vision'],['info','School information (extra)'],
 ['programmes','Programmes (Title|Description, one per line)'],['rules','Rules & regulations (one per line)'],['admissionInfo',
 'Admission information'],['contact','Contact page text'],['news','Public news text']];
@@ -644,8 +1148,7 @@ dash({'1. ADMIN OVERVIEW':aOver,'2 & 5. STUDENTS MANAGEMENT':aPeople('student'),
 'School Calendar Events'),'17. EXAMINATIONS (TIMETABLE)':()=>cm(['timetable'],'Examination Timetable'),
 '18. REPORT CARDS & BROADSHEET':()=>reportsView(lines(S.classes)),'19. PROMOTIONS':aAcad,'20. MESSAGES':()=>cm(['message'],
 'Messages'),'21. SUPPORT':aSupport,
-'22. FEES & PAYMENTS':aFees,'23. REPORTS & STATS':aAnal,'24. ADMISSIONS':aAdm,'25. DOCUMENTS':()=>cm(['document'],
-'Documents (title + link/description)'),
+'22. FEES & PAYMENTS':aFees,'23. REPORTS & STATS':aAnal,'24. ADMISSIONS':aAdm,'25. DOCUMENTS / MATERIALS':()=>cm(['document','material','assignment','lesson'],'Documents, Learning Materials, Assignments & Lesson Notes'),
 '26. PERMISSIONS':aPerm,'27. PROFILE & CHANGE PASSWORD':account,'28. SETTINGS':()=>aForm('System Settings',SYS_F,
 SYS_A),'29. AUDIT LOGS':aAudit,'30. BACKUP':aBackup,'31. HELP':aHelp,'32. SECTION MANAGEMENT':aSections});}
 function aForm(title,f,a,logos){V(`<div class="box"><h2>${title}</h2>${f.map(([k,l])=>`<label>${l}<input data-k="${k}" value="${esc(S[k])}"></label>`).join('')}${a.map(([k,
