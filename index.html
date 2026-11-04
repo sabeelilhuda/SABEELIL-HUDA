@@ -444,7 +444,7 @@ $('#s').onclick=async()=>{const v=$('#n').value;if(!/^(?=.*[A-Za-z])(?=.*\d).{8,
 try{await updatePassword(auth.currentUser,v);$('#er').textContent='Password changed.';}catch(e){$('#er').textContent='Log in again, then retry.';
 }};}
 async function stuList(cl){return (await getDocs(query(collection(db,'users'),where('role','==','student'),where('classId',
-'==',cl)))).docs.map(d=>({id:d.id,...d.data()}));}
+'==',cl)))).docs.map(d=>({id:d.id,...d.data()})).filter(u=>u.status!=='Deleted'&&u.status!=='Graduated'&&!u.deletedAt);}
 const clsOpts=c=>c.map(x=>`<option>${esc(x)}</option>`).join('');
 async function attSummary(cl,sel){const [s,q]=await Promise.all([stuList(cl),getDocs(query(collection(db,'attendance'),
 where('classId','==',cl)))]),c={};
@@ -961,8 +961,55 @@ async function viewResults(d){const er=$('#er');if(!d.classId)return er.textCont
 try{const [q,us]=await Promise.all([getDocs(rq(d)),stuList(d.classId)]),nm=Object.fromEntries(us.map(u=>[u.id,u.name]));
 const rows=q.docs.map(x=>x.data()).sort((a,b)=>(nm[a.studentUid]||'').localeCompare(nm[b.studentUid]||'')||String(a.subject).localeCompare(String(b.subject)));
 $('#rv').innerHTML=rows.length?`<table><tr><th>Student</th><th>Subject</th><th>1st C.A (30)</th><th>Exam (70)</th><th>Total</th><th>Status</th></tr>${rows.map(r=>`<tr><td>${esc(nm[r.studentUid]||r.studentUid)}</td><td>${esc(r.subject)}</td><td>${(r.ca1||0)+(r.ca2||0)}</td><td>${r.exam}</td><td>${(r.ca1||0)+(r.ca2||0)+(r.exam||0)}</td><td>${esc(r.status)}</td></tr>`).join('')}</table>`:'<p>No results have been submitted for this class, session and term.</p>';er.textContent='';}catch(e){er.textContent=e.message;}}
+async function aGraduated(){
+  V(`<div class="box"><h2>Graduated Students</h2>
+  <p>Students who completed their studies. Their accounts and academic records are preserved. They do not appear in the Active Students list.</p>
+  <div id="gl">Loading...</div></div>`);
+  try{
+    const q=await getDocs(query(collection(db,'users'),where('role','==','student')));
+    const grads=q.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==='Graduated');
+    if(!grads.length){$('#gl').innerHTML='<p>No graduated students yet.</p>';return;}
+    let html=`<table><tr><th>Student ID</th><th>Name</th><th>Previous Class</th><th>Graduation Date</th><th></th></tr>`;
+    for(const u of grads){
+      const gd=u.graduatedAt?fmt(u.graduatedAt):(u.classHistory||[]).filter(h=>h.type==='graduate').slice(-1)[0];
+      const gdate=typeof gd==='object'&&gd&&gd.at?fmt(gd.at):(typeof gd==='string'?gd:fmt(u.graduatedAt));
+      html+=`<tr><td>${esc(u.loginId)}</td><td>${esc(u.name)}</td><td>${esc(u.previousClass||u.classId||'—')}</td><td>${esc(gdate||'—')}</td>
+      <td>
+        <button data-gv="${u.id}">View Records</button>
+        <button data-gr="${u.id}" style="background:#0b6e4f">Restore to Active</button>
+      </td></tr>`;
+    }
+    html+='</table><div id="gv"></div>';
+    $('#gl').innerHTML=html;
+    const map=Object.fromEntries(grads.map(u=>[u.id,u]));
+    A.querySelectorAll('[data-gv]').forEach(b=>b.onclick=async()=>{
+      const u=map[b.dataset.gv];
+      let reps=[];
+      try{reps=(await getDocs(query(collection(db,'reports'),where('uid','==',b.dataset.gv)))).docs.map(d=>d.data());}catch(e){}
+      $('#gv').innerHTML=`<div class="box"><h3>${esc(u.name)} — Academic records</h3>
+      <p>ID: ${esc(u.loginId)} | Previous class: ${esc(u.previousClass||u.classId||'—')}</p>
+      ${histHTML(u)}
+      ${reps.length?reps.map(x=>`<p><b>${esc(x.session)} ${esc(x.term)}</b> — Average ${x.average??'—'} — Position ${x.position??'—'}</p>`).join(''):'<p>No published reports found.</p>'}
+      <button class="p" onclick="$('#gv').innerHTML=''">Close</button></div>`;
+    });
+    A.querySelectorAll('[data-gr]').forEach(b=>b.onclick=async()=>{
+      const u=map[b.dataset.gr];
+      if(!confirm('Restore '+u.name+' to Active Students?'))return;
+      try{
+        await updateDoc(doc(db,'users',b.dataset.gr),{
+          status:'Active', active:true,
+          classHistory:arrayUnion({from:'Graduated',to:u.previousClass||u.classId||'',session:S.session||'',at:Date.now(),by:me.uid,type:'restore'})
+        });
+        await audit('restoreGraduate',u.loginId);
+        alert('Student restored to Active list.');
+        aGraduated();
+      }catch(e){alert(e.message);}
+    });
+  }catch(e){$('#gl').innerHTML=`<p class="err">${esc(e.message)}</p>`;}
+}
 const aPeople=role=>async()=>{const q=await getDocs(query(collection(db,'users'),where('role','==',role))),isS=role==='student',
-U=Object.fromEntries(q.docs.map(d=>[d.id,d.data()])),
+allDocs=q.docs.filter(d=>{const x=d.data();if(x.status==='Deleted'||x.deletedAt)return false;if(isS&&x.status==='Graduated')return false;return true;}),
+U=Object.fromEntries(allDocs.map(d=>[d.id,d.data()])),
 dls=`<datalist id="dl_ses">${(S.sessions||[]).map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="dl_trm">${[...new Set((S.sessions||[]).flatMap(x=>x.terms||[]))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist><datalist id="dl_cls">${lines(S.classes).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
 V(`<div class="box"><h2>Add ${role}</h2>${dls}<input id="nm" placeholder="Full name">
 ${isS?`<input id="cl" placeholder="Class (subjects are assigned automatically from this class)" list="dl_cls">
@@ -977,8 +1024,8 @@ ${isS?`<input id="cl" placeholder="Class (subjects are assigned automatically fr
 <option value="random">Random (more secure)</option></select></label><button class="p" id="mk">Create account</button>
 <p id="er"></p></div>
 <div class="box"><input id="sq" placeholder="Search by name or ID"><button class="p" id="xl">Export list (CSV)</button><table id="tb"><tr><th>ID</th><th>Name</th>
-<th>Class</th><th>Sections</th>${isS?'<th>Status</th>':''}<th></th></tr>${q.docs.map(d=>{const x=d.data();return `<tr data-s="${esc((x.loginId+' '+x.name).toLowerCase())}"><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.classId)}</td><td>${esc(secsOf(x))}</td>${isS?`<td>${esc(statusOf(x))}</td>`:''}
-<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-delu="${d.id}" style="background:#8B0000">Delete</button></td></tr>`}).join('')}</table>
+<th>Class</th><th>Sections</th>${isS?'<th>Status</th>':''}<th></th></tr>${allDocs.map(d=>{const x=d.data();return `<tr data-s="${esc((x.loginId+' '+x.name).toLowerCase())}"><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.classId)}</td><td>${esc(secsOf(x))}</td>${isS?`<td>${esc(statusOf(x))}</td>`:''}
+<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> <button data-grad="${d.id}" style="background:#0b6e4f">Graduate</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-delu="${d.id}" style="background:#8B0000">Delete</button></td></tr>`}).join('')}</table>
 <div id="pv"></div></div>`);
 A.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{
 $('#pv').innerHTML=admissionHTML(await withPhoto(U[b.dataset.ad],b.dataset.ad))+printBtn()+' '+pdfBtn();
@@ -1048,6 +1095,24 @@ A.querySelectorAll('[data-delu]').forEach(b=>b.onclick=async()=>{
     alert('User deleted. They can no longer log in. Academic and payment history was preserved.');
     aPeople(role)();
   }catch(e){alert('Could not delete: '+(e.message||e.code));}
+});
+A.querySelectorAll('[data-grad]').forEach(b=>b.onclick=async()=>{
+  const id=b.dataset.grad, u=U[id];
+  if(!u)return;
+  if(!confirm('Mark '+u.name+' ('+u.loginId+') as GRADUATED?\n\nThey will move to Graduated Students list.\nAccount and academic records are KEPT.\nThey will no longer appear in Active Students.'))return;
+  try{
+    await updateDoc(doc(db,'users',id),{
+      status:'Graduated',
+      active:false,
+      graduatedAt:Date.now(),
+      graduatedBy:me.uid,
+      previousClass:u.classId||'',
+      classHistory:arrayUnion({from:u.classId||'',to:'Graduated',session:S.session||'',at:Date.now(),by:me.uid,type:'graduate'})
+    });
+    await audit('graduate',u.loginId);
+    alert('Student moved to Graduated Students.');
+    aPeople(role)();
+  }catch(e){alert(e.message||e.code);}
 });
 };
 
@@ -1253,7 +1318,7 @@ const SYS_F=[['blue','Blue colour (hex)'],['green','Green colour (hex)'],['repor
 const SYS_A=[['affective','Affective Domain (one per line)'],['admissionText','Admission letter declaration text']];
 
 function adminDash(){seed();
-dash({'1. ADMIN OVERVIEW':aOver,'2 & 5. STUDENTS MANAGEMENT':aPeople('student'),'3 & 6. TEACHERS MANAGEMENT':aPeople('teacher'),
+dash({'1. ADMIN OVERVIEW':aOver,'2 & 5. STUDENTS MANAGEMENT':aPeople('student'),'GRADUATED STUDENTS':aGraduated,'3 & 6. TEACHERS MANAGEMENT':aPeople('teacher'),
 '4. ADMIN ACCOUNTS':aAdmins,
 '7. CLASS MANAGEMENT':aClasses,'8. SUBJECT MANAGEMENT':aSubjects,
 '9 & 10. SESSIONS & TERMS':aSessions,
@@ -1296,12 +1361,12 @@ b])=>`<div class="stat"><h3>${a}</h3><p>${b}</p></div>`).join('')}</div><p>Activ
 </p><h3>Recent activities</h3>${au.docs.map(d=>`<p>${esc(fmt(d.data().at))} — ${esc(d.data().action)} ${esc(d.data().detail)}</p>`).join('')||'<p>None yet.</p>'}</div>`);
 }
 async function aAdmins(){const q=await getDocs(query(collection(db,'users'),where('role','in',['admin','superadmin'])));
-
+const docs=q.docs.filter(d=>{const x=d.data();return x.status!=='Deleted'&&!x.deletedAt;});
 V(`<div class="box"><h2>Admin Accounts</h2>${me.role==='superadmin'?`<h3>Add another Admin</h3><input id="nm" placeholder="Full name">
 <input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Temporary password (min 8, letters and numbers)">
 <label><input type="checkbox" id="sp" style="width:auto"> 👁 Show password</label><button class="p" id="mk">Create Admin</button>
 <p id="er"></p>`:'<p>Only the Super Admin can add Admins.</p>'}<table><tr><th>ID</th><th>Name</th><th>Role</th>
-<th></th></tr>${q.docs.map(d=>{const x=d.data();return `<tr><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.role)}</td><td>${me.role==='superadmin'&&x.role==='admin'?`<button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-r="${d.id}">Reset pw</button>`:''}</td></tr>`}
+<th></th></tr>${docs.map(d=>{const x=d.data();return `<tr><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.role)}</td><td>${me.role==='superadmin'&&x.role==='admin'?`<button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-r="${d.id}">Reset pw</button> <button data-deladm="${d.id}" style="background:#8B0000">Delete</button>`:''}</td></tr>`}
 ).join('')}</table></div>`);
 if($('#mk')){$('#sp').onchange=e=>$('#pw').type=e.target.checked?'text':'password';$('#mk').onclick=async()=>{
 const nm=$('#nm').value.trim(),em=$('#em').value.trim(),pw=$('#pw').value;
@@ -1313,7 +1378,18 @@ try{const r=await makeAccount({role:'admin',name:nm,email:em,pw});$('#er').textC
 }};}
 A.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{await updateDoc(doc(db,'users',b.dataset.a),{active:b.dataset.on==='1'}
 );aAdmins();});
-A.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resetPw(b.dataset.r));}
+A.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>resetPw(b.dataset.r));
+A.querySelectorAll('[data-deladm]').forEach(b=>b.onclick=async()=>{
+  if(!confirm('PERMANENTLY delete this Admin account? They will no longer be able to log in.'))return;
+  if(!confirm('Final confirmation: delete this Admin?'))return;
+  try{
+    await updateDoc(doc(db,'users',b.dataset.deladm),{active:false,status:'Deleted',deletedAt:Date.now(),deletedBy:me.uid});
+    try{await call('deleteUser',{uid:b.dataset.deladm});}catch(e){}
+    await audit('deleteAdmin',b.dataset.deladm);
+    aAdmins();
+  }catch(e){alert(e.message);}
+});
+}
 async function aAudit(){const q=await getDocs(query(collection(db,'audit'),orderBy('at','desc'),limit(100)));
 V(`<div class="box"><h2>Audit Logs & Login Activity</h2><input id="aq" placeholder="Search the log (action, detail, user)"><table id="at"><tr><th>Time</th><th>Action</th><th>Detail</th>
 <th>By (uid)</th></tr>${q.docs.map(d=>{const x=d.data();return `<tr data-q="${esc((x.action+' '+x.detail+' '+x.by).toLowerCase())}"><td>${esc(fmt(x.at))}</td><td>${esc(x.action)}</td><td>${esc(x.detail)}</td><td>${esc(x.by)}</td></tr>`}
@@ -1543,203 +1619,9 @@ async function restoreAll(data){const it=[];for(const c of COLS.filter(x=>x!=='u
 ;}
 </script><script>
 window.SMS_LOGOS={
-naf:`
-data:image/png;base64,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
-BJRU5ErkJggg==
-`.replace(/\s/g,''),
-mosque:`
-data:image/png;base64,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
-0wXAAAAABJRU5ErkJggg==
-`.replace(/\s/g,''),
-report:`
-data:image/png;base64,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
-`.replace(/\s/g,'')
+naf:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+mosque:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+report:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 };
 </script>
 </body></html>
