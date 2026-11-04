@@ -529,34 +529,41 @@ async function studentFees(){
         sub.innerHTML=`<h3>Upload Payment Receipt</h3>
         <label>Select Fee<select id="fid">${items.map(f=>`<option value="${esc(f.id)}">${esc(f.title)} (₦${(+f.amount||0).toLocaleString()})</option>`).join('')}</select></label>
         <label>Amount Paid<input id="amt" type="number" min="1" step="1" placeholder="Amount you paid"></label>
-        <label>Transaction Reference / Teller No<input id="ref" placeholder="e.g. TRX123456 or bank teller number"></label>
+        <label>Transaction Reference / Teller No (optional)<input id="ref" placeholder="Optional — e.g. bank teller number"></label>
         <label>Payment Date<input id="pdt" type="date"></label>
-        <label>Receipt Photo / Screenshot<input type="file" id="rfile" accept="image/*"></label>
+        <label>Receipt Photo / Screenshot (required)<input type="file" id="rfile" accept="image/*"></label>
         <p class="err" id="uer"></p>
         <button class="p" id="usub">Submit for Verification</button>
         <p>After upload, status will be Pending until Admin approves or rejects it. Do not upload the same receipt twice.</p>`;
         $('#usub').onclick=async()=>{
           const fid=$('#fid').value, amt=+$('#amt').value, ref=$('#ref').value.trim(), pdt=$('#pdt').value, file=$('#rfile').files[0];
           if(!fid||!amt||amt<=0)return $('#uer').textContent='Enter a valid amount.';
-          if(!ref)return $('#uer').textContent='Enter transaction reference.';
           if(!pdt)return $('#uer').textContent='Select payment date.';
-          if(!file)return $('#uer').textContent='Choose a receipt image.';
-          if(file.size>8e6)return $('#uer').textContent='Image too large (max ~8MB).';
-          $('#uer').textContent='Uploading...';
+          if(!file)return $('#uer').textContent='Please upload a picture of your payment receipt.';
+          if(file.size>8e6)return $('#uer').textContent='Image too large (max ~8MB). Compress the photo and try again.';
+          const btn=$('#usub');
+          btn.disabled=true; btn.textContent='Please wait...';
+          $('#uer').style.color='#b00020';
+          $('#uer').textContent='Uploading receipt...';
           try{
             const item=items.find(x=>x.id===fid);
             let url='';
+            // 1) Try Firebase Storage with timeout; 2) fallback to compressed image in Firestore
             try{
               const m=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
               const storage=m.getStorage(app);
-              const path=`receipts/${me.uid}/${Date.now()}_${(file.name||'receipt').replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+              const path='receipts/'+me.uid+'/'+Date.now()+'_'+(file.name||'receipt').replace(/[^a-zA-Z0-9._-]/g,'_');
               const r=m.ref(storage,path);
-              await m.uploadBytes(r,file,{contentType:file.type||'image/jpeg'});
+              const up=m.uploadBytes(r,file,{contentType:file.type||'image/jpeg'});
+              await Promise.race([up, sleep(12000).then(()=>{throw Error('storage-timeout');})]);
               url=await m.getDownloadURL(r);
             }catch(se){
-              // fallback compressed data URL (still works, stored in Firestore)
-              url=await shrink(file,900,false);
+              // Storage not ready / rules / timeout → compress and store as data URL
+              $('#uer').textContent='Compressing photo...';
+              url=await shrink(file,700,false);
             }
+            if(!url) throw Error('Could not process the image. Try a smaller photo.');
+            $('#uer').textContent='Saving payment record...';
             const docRef=doc(collection(db,'payments'));
             await setDoc(docRef,{
               studentUid:me.uid, feeItemId:fid, amount:amt, reference:ref, payDate:pdt,
@@ -568,8 +575,18 @@ async function studentFees(){
             await audit('paymentSubmit', me.loginId+' '+amt);
             $('#uer').style.color='#0b6e4f';
             $('#uer').textContent='Receipt submitted successfully. Status: Pending Admin verification.';
-            setTimeout(()=>go('hist'),1500);
-          }catch(e){$('#uer').textContent='Upload failed: '+(e.message||e.code||e);}
+            btn.textContent='Submitted';
+            setTimeout(()=>go('hist'),1200);
+          }catch(e){
+            const msg=String(e.message||e.code||e);
+            let tip='Upload failed: '+msg;
+            if(msg.includes('permission')||msg.includes('PERMISSION')||msg.includes('Missing or insufficient')){
+              tip='Permission error: Admin must publish Firestore rules for the "payments" collection. See instructions.';
+            }
+            $('#uer').style.color='#b00020';
+            $('#uer').textContent=tip;
+            btn.disabled=false; btn.textContent='Submit for Verification';
+          }
         };
       }catch(e){sub.innerHTML=`<p class="err">${esc(e.message)}</p>`;}
     }else if(t==='hist'||t==='stat'){
@@ -632,7 +649,51 @@ V(`<div class="box"><h2>Welcome, ${esc(me.name)}</h2>
 <p><b>Attendance:</b> ${p} present out of ${q.size} recorded day(s)</p>
 </div>`);
 photoUI(me.uid,'#stovphoto');},
-Profile:()=>{V(`<div class="box"><h2>My Profile / BioData</h2><div id="pbox"></div><p>${esc(me.name)} — ${esc(me.loginId)} — ${esc(me.classId)}</p>${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}<p><b>Sections:</b> ${esc(secsOf(me))}</p>${me.session?`<p><b>Academic session:</b> ${esc(me.session)} ${esc(me.term||'')}</p>`:''}${kv(me.bio)}${histHTML(me)}</div>`);photoUI(me.uid,'#pbox');},
+Profile:()=>{
+  V(`<div class="box"><h2>My Profile</h2>
+  <div id="pview">
+    <div id="pbox" style="margin-bottom:10px"></div>
+    <p><b>Name:</b> ${esc(me.name)}</p>
+    <p><b>Student ID:</b> ${esc(me.loginId)}</p>
+    <p><b>Class:</b> ${esc(me.classId||'—')}</p>
+    <p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
+    ${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}
+    ${me.session?`<p><b>Session / Term:</b> ${esc(me.session)} ${esc(me.term||'')}</p>`:''}
+    ${kv(me.bio)}
+    ${histHTML(me)}
+    <button class="p" id="bedit" style="margin-top:12px">EDIT PROFILE</button>
+  </div>
+  <div id="pedit" style="display:none">
+    <h3>Edit Profile</h3>
+    <div id="pbox2"></div>
+    <p style="font-size:13px;color:#555">You can update your profile photo here. Name, class and other school records are managed by the Admin.</p>
+    <label>New password (optional)<input id="n" type="password" placeholder="Leave blank to keep current password"></label>
+    <label><input type="checkbox" id="sp" style="width:auto"> Show password</label>
+    <p id="er" class="err"></p>
+    <button class="p" id="s">Save changes</button>
+    <button class="p" id="bcancel" style="background:#666">Cancel</button>
+  </div>
+  </div>`);
+  // show photo read-only first
+  photoUI(me.uid,'#pbox');
+  $('#bedit').onclick=()=>{
+    $('#pview').style.display='none';
+    $('#pedit').style.display='block';
+    photoUI(me.uid,'#pbox2');
+  };
+  $('#bcancel').onclick=()=>{ $('#pedit').style.display='none'; $('#pview').style.display='block'; };
+  $('#sp').onchange=e=>$('#n').type=e.target.checked?'text':'password';
+  $('#s').onclick=async()=>{
+    const v=$('#n').value;
+    if(v){
+      if(!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(v)) return $('#er').textContent='Password: min 8 characters, letters and numbers.';
+      try{await updatePassword(auth.currentUser,v);$('#er').style.color='#0b6e4f';$('#er').textContent='Password updated.';}
+      catch(e){$('#er').textContent='Log in again, then retry password change.';return;}
+    } else {
+      $('#er').style.color='#0b6e4f';$('#er').textContent='Photo saved (if changed).';
+    }
+  };
+},
 'Admission Letter':async()=>{if(!me.classId)return V('<div class="box">Your class has not been assigned yet.</div>');V('<div class="box">Loading...</div>');V(admissionHTML(await withPhoto(me,me.uid))+printBtn()+' '+pdfBtn());},
 
 Subjects:()=>{const ar=Object.fromEntries(lines(S.subjects).map(l=>l.split('|'))),L=classSubs(me.classId)||me.subjects||[];V(`<div class="box"><h2>My Subjects${me.classId?' — '+esc(me.classId):''}</h2>${L.map(x=>`${esc(x)}${ar[x]?` — <span class="ar">${esc(ar[x])}</span>`:''}`).join('<br>')||'No subjects assigned yet. Please contact the school Admin.'}</div>`);},
@@ -719,16 +780,40 @@ async function teacherPerformance(){
 }
 function teacherProfile(){
   V(`<div class="box"><h2>My Profile</h2>
-  <div id="pbox"></div>
-  <p><b>Name:</b> ${esc(me.name)}</p>
-  <p><b>Teacher ID:</b> ${esc(me.loginId)}</p>
-  <p><b>Role:</b> Teacher</p>
-  <p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
-  <p><b>Assigned classes & subjects:</b></p>
-  <ul>${(me.teaching||[]).map(t=>`<li>${esc(t.replace('|',' — '))}</li>`).join('')||'<li>None assigned yet</li>'}</ul>
-  ${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}
+  <div id="pview">
+    <div id="pbox" style="margin-bottom:10px"></div>
+    <p><b>Name:</b> ${esc(me.name)}</p>
+    <p><b>Teacher ID:</b> ${esc(me.loginId)}</p>
+    <p><b>Role:</b> Teacher</p>
+    <p><b>Sections:</b> ${esc(secsOf(me)||'—')}</p>
+    <p><b>Assigned classes & subjects:</b></p>
+    <ul>${(me.teaching||[]).map(t=>`<li>${esc(t.replace('|',' — '))}</li>`).join('')||'<li>None assigned yet</li>'}</ul>
+    ${me.email?`<p><b>School email:</b> ${esc(me.email)}</p>`:''}
+    <button class="p" id="bedit" style="margin-top:12px">EDIT PROFILE</button>
+  </div>
+  <div id="pedit" style="display:none">
+    <h3>Edit Profile</h3>
+    <div id="pbox2"></div>
+    <p style="font-size:13px;color:#555">Update your photo here. Class assignments are managed by Admin. Bank details are under My Bank Details.</p>
+    <label>New password (optional)<input id="n" type="password" placeholder="Leave blank to keep current password"></label>
+    <label><input type="checkbox" id="sp" style="width:auto"> Show password</label>
+    <p id="er" class="err"></p>
+    <button class="p" id="s">Save changes</button>
+    <button class="p" id="bcancel" style="background:#666">Cancel</button>
+  </div>
   </div>`);
   photoUI(me.uid,'#pbox');
+  $('#bedit').onclick=()=>{ $('#pview').style.display='none'; $('#pedit').style.display='block'; photoUI(me.uid,'#pbox2'); };
+  $('#bcancel').onclick=()=>{ $('#pedit').style.display='none'; $('#pview').style.display='block'; };
+  $('#sp').onchange=e=>$('#n').type=e.target.checked?'text':'password';
+  $('#s').onclick=async()=>{
+    const v=$('#n').value;
+    if(v){
+      if(!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(v)) return $('#er').textContent='Password: min 8 characters, letters and numbers.';
+      try{await updatePassword(auth.currentUser,v);$('#er').style.color='#0b6e4f';$('#er').textContent='Password updated.';}
+      catch(e){$('#er').textContent='Log in again, then retry.';}
+    } else $('#er').textContent='Photo saved (if changed).';
+  };
 }
 async function teacherBank(){
   V(`<div class="box"><h2>My Bank Details (for salary)</h2>
@@ -878,9 +963,9 @@ const rows=q.docs.map(x=>x.data()).sort((a,b)=>(nm[a.studentUid]||'').localeComp
 $('#rv').innerHTML=rows.length?`<table><tr><th>Student</th><th>Subject</th><th>1st C.A (30)</th><th>Exam (70)</th><th>Total</th><th>Status</th></tr>${rows.map(r=>`<tr><td>${esc(nm[r.studentUid]||r.studentUid)}</td><td>${esc(r.subject)}</td><td>${(r.ca1||0)+(r.ca2||0)}</td><td>${r.exam}</td><td>${(r.ca1||0)+(r.ca2||0)+(r.exam||0)}</td><td>${esc(r.status)}</td></tr>`).join('')}</table>`:'<p>No results have been submitted for this class, session and term.</p>';er.textContent='';}catch(e){er.textContent=e.message;}}
 const aPeople=role=>async()=>{const q=await getDocs(query(collection(db,'users'),where('role','==',role))),isS=role==='student',
 U=Object.fromEntries(q.docs.map(d=>[d.id,d.data()])),
-dls=`<datalist id="dl_ses">${(S.sessions||[]).map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="dl_trm">${[...new Set((S.sessions||[]).flatMap(x=>x.terms||[]))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
+dls=`<datalist id="dl_ses">${(S.sessions||[]).map(x=>`<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="dl_trm">${[...new Set((S.sessions||[]).flatMap(x=>x.terms||[]))].map(x=>`<option value="${esc(x)}">`).join('')}</datalist><datalist id="dl_cls">${lines(S.classes).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`;
 V(`<div class="box"><h2>Add ${role}</h2>${dls}<input id="nm" placeholder="Full name">
-${isS?`<input id="cl" placeholder="Class"><input id="sj" placeholder="Subjects (comma separated, same names as report subjects)">
+${isS?`<input id="cl" placeholder="Class (subjects are assigned automatically from this class)" list="dl_cls">
 <input id="ses" list="dl_ses" placeholder="Academic session" value="${esc(S.session)}"><input id="trm" list="dl_trm" placeholder="Term" value="${esc(S.term)}">
 <input id="dob" placeholder="Date of birth"><input id="sx" placeholder="Sex (Male / Female)"><input id="so" placeholder="State of origin">
 <input id="ad" placeholder="Home address"><input id="ph" placeholder="Parent phone"><input id="sv" placeholder="SVC No">
@@ -893,7 +978,7 @@ ${isS?`<input id="cl" placeholder="Class"><input id="sj" placeholder="Subjects (
 <p id="er"></p></div>
 <div class="box"><input id="sq" placeholder="Search by name or ID"><button class="p" id="xl">Export list (CSV)</button><table id="tb"><tr><th>ID</th><th>Name</th>
 <th>Class</th><th>Sections</th>${isS?'<th>Status</th>':''}<th></th></tr>${q.docs.map(d=>{const x=d.data();return `<tr data-s="${esc((x.loginId+' '+x.name).toLowerCase())}"><td>${esc(x.loginId)}</td><td>${esc(x.name)}</td><td>${esc(x.classId)}</td><td>${esc(secsOf(x))}</td>${isS?`<td>${esc(statusOf(x))}</td>`:''}
-<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button></td></tr>`}).join('')}</table>
+<td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-delu="${d.id}" style="background:#8B0000">Delete</button></td></tr>`}).join('')}</table>
 <div id="pv"></div></div>`);
 A.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{
 $('#pv').innerHTML=admissionHTML(await withPhoto(U[b.dataset.ad],b.dataset.ad))+printBtn()+' '+pdfBtn();
@@ -901,7 +986,11 @@ $('#pv').innerHTML=admissionHTML(await withPhoto(U[b.dataset.ad],b.dataset.ad))+
 $('#xl').onclick=()=>{const q=c=>'"'+String(c??'').replace(/"/g,'""')+'"';dl(role+'s.csv',['ID,Name,Email,Class,Sections,Status',...Object.values(U).map(x=>[x.loginId,x.name,x.email,x.classId,secsOf(x),isS?statusOf(x):(x.active===false?'Deactivated':'Active')].map(q).join(','))].join('\n'),'text/csv');};
 $('#sq').oninput=e=>A.querySelectorAll('tr[data-s]').forEach(r=>r.style.display=r.dataset.s.includes(e.target.value.toLowerCase())?'':'none');
 $('#mk').onclick=async()=>{const c=s=>$(s)?.value.trim(),d={role,name:c('#nm'),pw:$('#dp').value,sections:[...A.querySelectorAll('.csec:checked')].map(x=>x.value)};
-if(isS){d.classId=c('#cl');d.subjects=c('#sj').split(',').map(x=>x.trim()).filter(Boolean);{const m=classSubs(d.classId);if(m)d.subjects=m;}d.session=c('#ses');d.term=c('#trm');d.bio={dob:c('#dob'),
+if(isS){d.classId=c('#cl');
+  // Automatic subject assignment from class
+  const m=classSubs(d.classId);
+  d.subjects=m?m:(S.subjects?lines(S.subjects).map(l=>l.split('|')[0]):[]);
+  d.session=c('#ses');d.term=c('#trm');d.bio={dob:c('#dob'),
 sex:c('#sx'),state:c('#so'),address:c('#ad'),phone:c('#ph'),svc:c('#sv'),rank:c('#rk'),unit:c('#un'),learn:c('#ln'),
 rel:c('#rl')};}else d.teaching=c('#tc').split(',').map(x=>x.trim()).filter(Boolean);
 try{const r=await makeAccount(d);$('#er').textContent=`ID: ${r.loginId} | School email: ${r.email} | Temporary password: ${r.tempPassword} (give these to the user; he/she must change the password at first login)`;
@@ -944,7 +1033,23 @@ phone:g('ph'),svc:g('sv'),rank:g('rk'),unit:g('un'),learn:g('ln'),rel:g('rl')};u
 A.querySelectorAll('[data-r]').forEach(b=>b.onclick=async()=>{if(confirm('Reset password?')){await resetPw(b.dataset.r);
 }});
 A.querySelectorAll('[data-a]').forEach(b=>b.onclick=async()=>{const on=b.dataset.on==='1';await updateDoc(doc(db,'users',b.dataset.a),isS?{active:on,status:on?'Active':'Suspended'}:{active:on}
-);audit('setActive',b.dataset.a);aPeople(role)();});};
+);audit('setActive',b.dataset.a);aPeople(role)();});
+A.querySelectorAll('[data-delu]').forEach(b=>b.onclick=async()=>{
+  const id=b.dataset.delu, u=U[id];
+  if(!u)return;
+  if(!confirm('PERMANENTLY delete '+u.name+' ('+u.loginId+')?\n\nThis cannot be undone.\n\n• They will no longer be able to log in\n• Academic results and payment records are KEPT for school history\n• The user profile will be removed from the active list'))return;
+  if(!confirm('Final confirmation: Delete '+u.loginId+' forever?'))return;
+  try{
+    // Soft-delete profile so login is blocked; keep results/payments/attendance for history
+    await updateDoc(doc(db,'users',id),{active:false,status:'Deleted',deletedAt:Date.now(),deletedBy:me.uid,name:(u.name||'')+' [DELETED]'});
+    // Try hard-delete Auth account via Cloud Function if available (optional)
+    try{await call('deleteUser',{uid:id});}catch(e){/* function optional */}
+    await audit('deleteUser',u.loginId+' '+u.name);
+    alert('User deleted. They can no longer log in. Academic and payment history was preserved.');
+    aPeople(role)();
+  }catch(e){alert('Could not delete: '+(e.message||e.code));}
+});
+};
 
 function aAcad(){V(`<div class="box"><h2>Academic: Student Promotion</h2><p>Sessions, terms, classes and subjects are edited in Settings. Teachers' classes/subjects are assigned from Teachers → Edit.</p>
 <input id="f" placeholder="From class"><input id="t" placeholder="To class"><button class="p" id="go">Promote all students</button>
