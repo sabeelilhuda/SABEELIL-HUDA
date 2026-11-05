@@ -132,8 +132,9 @@ let tries=0,lockUntil=0;
 function loginPage(kind,note){
 try{history.pushState({view:'login'},'','#/login');}catch(e){}
 const lab='School Email (or ID)';
-shell(pubNav(),`<div class="login-wrap"><div class="box"><h2>Portal Login</h2><p>Student Login: Enter your Student ID (e.g. <b>SH0002</b>) or registered login email (e.g. <b>SH0002@sabeelilhuda.com</b>) and password to access your dashboard.</p>
-<label>${lab}<input id="id" autocomplete="username" placeholder="SH0002 or SH0002@sabeelilhuda.com"></label><label>Password<input id="pw" type="password" autocomplete="current-password">
+shell(pubNav(),`<div class="login-wrap"><div class="box"><h2>Portal Login</h2><p>Login with <b>School Email + Password</b>, or with your <b>ID (UID)</b> and your password.<br>
+If your temporary password is the same as your ID, you can use e.g. <b>sh0001</b> / <b>sh0001</b>.</p>
+<label>${lab}<input id="id" autocomplete="username" placeholder="SH0001 or email"></label><label>Password<input id="pw" type="password" autocomplete="current-password">
 </label>
 <label><input type="checkbox" id="sh" style="width:auto"> Show password</label><p class="err" id="er"></p><button class="p" id="go" style="width:100%">Login</button>
 <p><a href="#" id="fg">Forgot password?</a></p></div></div>`,{brand:'School Portal'});
@@ -167,12 +168,18 @@ try{
   }
   // unique
   cand=[...new Set(cand.filter(Boolean))];
+  // Passwords to try: as typed, and if looks like UID also lowercase form
+  const idNorm=lower.replace(/\s+/g,'');
+  const pwds=[...new Set([pwd, pwd.toLowerCase()].filter(Boolean))];
   let ok=false, le;
   for(const em of cand){
-    try{
-      await signInWithEmailAndPassword(auth,em,pwd);
-      ok=true; break;
-    }catch(e2){ le=e2; }
+    for(const p of pwds){
+      try{
+        await signInWithEmailAndPassword(auth,em,p);
+        ok=true; break;
+      }catch(e2){ le=e2; }
+    }
+    if(ok) break;
   }
   if(!ok) throw le;
   tries=0;
@@ -883,7 +890,7 @@ ${isS?`<input id="cl" placeholder="Class (subjects are assigned automatically fr
 <p id="tchPreview" style="font-size:12px;margin-top:8px;color:#333"></p>
 </div>`}
 <label>Sections</label>${secBoxes([],'csec')}
-<label>Temporary password (user must change it at first login)<select id="dp"><option>123456</option><option>654321</option>
+<label>Temporary password (user must change it at first login)<select id="dp"><option value="uid">Same as ID (e.g. sh0001 / sh0001)</option><option>123456</option><option>654321</option>
 <option value="random">Random (more secure)</option></select></label><button class="p" id="mk">Create account</button>
 <p id="er"></p></div>
 <div class="box"><input id="sq" placeholder="Search by name or ID"><button class="p" id="xl">Export list (CSV)</button><table id="tb"><tr><th>ID</th><th>Name</th>
@@ -1463,7 +1470,7 @@ if(role==='admin'&&me.role!=='superadmin')throw Error('Only the Super Admin can 
 const n=await runTransaction(db,async t=>{const r=doc(db,'meta','counters'),x=await t.get(r),v=((x.data()||{})[role]||0)+1;
 t.set(r,{[role]:v},{merge:true});return v;});
 const loginId=pre+String(n).padStart(4,'0'),email=(d.email||loginId.toLowerCase()+'@'+EMAIL_DOMAIN).toLowerCase(),
-pw=d.pw==='random'?genPw():(d.pw||DEFAULT_PW[0]),sa=getAuth(sec),tc=d.teaching||[];
+pw=d.pw==='random'?genPw():(d.pw==='uid'||!d.pw?loginId.toLowerCase():d.pw),sa=getAuth(sec),tc=d.teaching||[];
 const c=await createUserWithEmailAndPassword(sa,email,pw);await signOut(sa);
 await setDoc(doc(db,'users',c.user.uid),{role,loginId,email,name:d.name,classId:d.classId||'',subjects:d.subjects||[],
 teaching:tc,classes:[...new Set(tc.map(x=>x.split('|')[0]))],bio:d.bio||{},sections:d.sections||[],status:'Active',session:d.session||'',term:d.term||'',active:true,mustChange:true,createdAt:Date.now()}
