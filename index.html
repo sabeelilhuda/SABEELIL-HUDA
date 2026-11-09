@@ -4,23 +4,23 @@
 .noprint,.top-contact-bar,.main-header,.sidebar,.sidebar-toggle,.sidebar-overlay,.footer-main,#stog,#sov{display:none!important}
 html,body{background:#fff!important;margin:0!important;padding:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .app-layout{display:block!important}
-.main-content,.container{margin:0 auto!important;padding:0!important;max-width:210mm!important;width:100%!important}
+.main-content,.container{margin:0 auto!important;padding:0!important;width:100%!important;max-width:none!important}
 .box{border:0!important;box-shadow:none!important;padding:0!important;margin:0!important}
 .sheet,.adm-form{
   page-break-after:always;page-break-inside:avoid;
-  width:190mm!important;max-width:190mm!important;
-  margin:0 auto!important;padding:10mm 12mm!important;
-  box-sizing:border-box!important;
+  margin:0 auto!important;box-sizing:border-box!important;background:#fff!important;
+  transform-origin:top center;transform:scale(var(--print-scale,1));
   border:3px solid #1f7ae0!important;
-  font-size:11pt!important;line-height:1.4!important;
-  background:#fff!important
 }
-.sheet h2,.adm-form h2{font-size:14pt!important;margin:6px 0!important;border:0!important}
-.sheet h3,.adm-form h3{font-size:12pt!important}
-.sheet table{width:100%!important;font-size:10pt!important;border-collapse:collapse!important}
+html[data-print-size="a4"] .sheet,html[data-print-size="a4"] .adm-form,html:not([data-print-size]) .sheet,html:not([data-print-size]) .adm-form{width:190mm;max-width:190mm;padding:10mm 12mm;font-size:11pt}
+html[data-print-size="a5"] .sheet,html[data-print-size="a5"] .adm-form{width:128mm;max-width:128mm;padding:8mm;font-size:9pt;border-width:2px!important}
+html[data-print-size="letter"] .sheet,html[data-print-size="letter"] .adm-form{width:7.5in;max-width:7.5in;padding:0.4in;font-size:11pt}
+html[data-print-size="fit"] .sheet,html[data-print-size="fit"] .adm-form{width:96%;max-width:96%;padding:8mm;font-size:10pt}
+.sheet h2,.adm-form h2{font-size:1.15em!important;margin:6px 0!important;border:0!important}
+.sheet table{width:100%!important;border-collapse:collapse!important}
 .sheet td,.sheet th{padding:3px 4px!important;border:1px solid #333!important}
-.sheet img,.adm-form img{max-height:70px!important;width:auto!important}
-@page{size:A4 portrait;margin:10mm}
+.sheet img,.adm-form img{max-height:65px!important;width:auto!important}
+@page{margin:10mm}
 }
 </style></head><body>
 <script>
@@ -311,20 +311,43 @@ return `<div class="sheet adm-form" style="border:4px solid #1f7ae0;padding:14px
 <p style="margin:8px 0"><span style="border-bottom:1px dotted #333;display:inline-block;min-width:28%">${esc(b.svc)||'…………'}</span>
  I learn: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:25%">${esc(b.learn)||'…………'}</span> (Service personnel only)</p>
 <p style="margin:8px 0">Home Address: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:70%">${esc(b.address)||'………………………………'}</span></p>
-<p style="margin:8px 0">Declaration of Parent/Guardian: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:50%">&nbsp;</span></p>
+<p style="margin:8px 0">Declaration of Parent/Guardian: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:50%"><b>${esc(b.pname||b.parentName||b.decl)||''}</b></span></p>
 <p style="margin:8px 0">I declare that <b>${esc(u.name)||'…………'}</b> is/are my <span style="border-bottom:1px dotted #333;display:inline-block;min-width:20%">${esc(b.rel)||'…………'}</span>
  and I will be responsible for his/her school fees and other requirements of the school and he/she will abide by the school rules and regulations.</p>
-<p style="margin:8px 0">Signature of Parent/Guardian: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:35%">&nbsp;</span>
+<p style="margin:8px 0">Signature of Parent/Guardian: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:35%">${esc(b.pname||b.parentName)||'&nbsp;'}</span>
  &nbsp; Date: ${boxes(5)}</p>
 <p style="margin:8px 0">Phone No: ${b.phone?`<b>${esc(b.phone)}</b>`:boxes(11)}</p>
 </div>
 <h3 style="color:#1f7ae0;text-align:center;margin:18px 0 10px;border:0;font-size:16px;text-transform:uppercase">FOR OFFICIAL USE ONLY</h3>
-<p style="margin:8px 0">Recommended for admission: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:55%">&nbsp;</span></p>
-<p style="margin:8px 0">Signature: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:25%">&nbsp;</span>
- &nbsp; Date: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:20%">&nbsp;</span>
- &nbsp; Stamp: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:15%">&nbsp;</span></p>
+<p style="margin:8px 0">Recommended for admission: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:55%">${esc(b.rec)||'&nbsp;'}</span></p>
+<p style="margin:8px 0">Signature: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:25%">${esc(b.osig)||'&nbsp;'}</span>
+ &nbsp; Date: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:20%">${esc(b.odate)||'&nbsp;'}</span>
+ &nbsp; Stamp: <span style="border-bottom:1px dotted #333;display:inline-block;min-width:15%">${esc(b.stamp)||'&nbsp;'}</span></p>
 </div>`;}
-const printBtn=()=>`<button class="p noprint" onclick="print()">Print</button>`;
+const printBtn=()=>`<div class="noprint print-bar" style="margin:10px 0;padding:10px;border:1px solid #ddd;border-radius:6px;background:#f7faf7;max-width:800px">
+<p style="margin:0 0 6px;font-weight:bold">Print size</p>
+<label style="font-weight:normal;display:inline-block;margin-right:10px"><input type="radio" name="psz" value="a4" checked style="width:auto"> A4</label>
+<label style="font-weight:normal;display:inline-block;margin-right:10px"><input type="radio" name="psz" value="a5" style="width:auto"> A5</label>
+<label style="font-weight:normal;display:inline-block;margin-right:10px"><input type="radio" name="psz" value="letter" style="width:auto"> Letter</label>
+<label style="font-weight:normal;display:inline-block;margin-right:10px"><input type="radio" name="psz" value="fit" style="width:auto"> Fit to page</label>
+<label style="font-weight:normal;display:inline-block;margin-right:8px">Scale % <input type="number" id="pscale" value="100" min="50" max="150" style="width:70px;display:inline-block;margin:0"></label>
+<button class="p" type="button" id="doprint">Print</button>
+</div>`;
+function bindPrint(){
+  const btn=document.getElementById('doprint');
+  if(!btn||btn.dataset.bound==='1')return;
+  btn.dataset.bound='1';
+  btn.onclick=()=>{
+    try{
+      const sz=(document.querySelector('input[name="psz"]:checked')||{}).value||'a4';
+      let sc=parseInt((document.getElementById('pscale')||{}).value,10); if(!(sc>0))sc=100;
+      sc=Math.min(150,Math.max(50,sc))/100;
+      document.documentElement.setAttribute('data-print-size',sz);
+      document.documentElement.style.setProperty('--print-scale',String(sc));
+      setTimeout(function(){window.print();},80);
+    }catch(e){alert('Print error: '+(e.message||e));}
+  };
+}
 const V=h=>$('#v').innerHTML=h;
 function dash(tabs){
   const navHtml=Object.keys(tabs).map(t=>`<button type="button" data-t="${esc(t)}">${esc(t)}</button>`).join('');
@@ -618,7 +641,7 @@ Profile:()=>{
     }
   };
 },
-'Admission Letter':async()=>{if(!me.classId)return V('<div class="box">Your class has not been assigned yet.</div>');V('<div class="box">Loading...</div>');V(admissionHTML(await withPhoto(me,me.uid))+printBtn()+' '+pdfBtn());},
+'Admission Letter':async()=>{if(!me.classId)return V('<div class="box">Your class has not been assigned yet.</div>');V('<div class="box">Loading...</div>');V(admissionHTML(await withPhoto(me,me.uid))+printBtn()+(typeof pdfBtn==='function'?' '+pdfBtn():''));bindPrint();},
 
 Subjects:()=>{const ar=Object.fromEntries(lines(S.subjects).map(l=>l.split('|'))),L=classSubs(me.classId)||me.subjects||[];V(`<div class="box"><h2>My Subjects${me.classId?' — '+esc(me.classId):''}</h2>${L.map(x=>`${esc(x)}${ar[x]?` — <span class="ar">${esc(ar[x])}</span>`:''}`).join('<br>')||'No subjects assigned yet. Please contact the school Admin.'}</div>`);},
 
@@ -959,7 +982,61 @@ ${isS?`<input id="cl" placeholder="Class (subjects are assigned automatically fr
 <td><button data-v="${d.id}">View</button> ${isS?`<button data-ad="${d.id}">Letter</button> <button data-grad="${d.id}" style="background:#0b6e4f">Graduate</button> `:''}${!isS?`<button data-bk="${d.id}">Bank</button> `:''}<button data-m="${d.id}">Edit</button> <button data-r="${d.id}">Reset pw</button> <button data-a="${d.id}" data-on="${x.active===false?1:0}">${x.active===false?'Activate':'Deactivate'}</button> <button data-delu="${d.id}" style="background:#8B0000">Delete</button></td></tr>`}).join('')}</table>
 <div id="pv"></div></div>`);
 A.querySelectorAll('[data-ad]').forEach(b=>b.onclick=async()=>{
-$('#pv').innerHTML=admissionHTML(await withPhoto(U[b.dataset.ad],b.dataset.ad))+printBtn()+' '+pdfBtn();
+  const id=b.dataset.ad, base=await withPhoto(U[id],id), bio=base.bio||{};
+  const f=(k,l,v,ph)=>`<label>${l}<input id="ad_${k}" value="${esc(v||'')}" ${ph?`placeholder="${esc(ph)}"`:''}></label>`;
+  $('#pv').innerHTML=`<div class="box noprint"><h2>Fill Admission Form</h2>
+  <p>Complete every field needed on the Application Form, then click <b>Generate Form</b>.</p>
+  ${f('name','Full Name',base.name)}
+  ${f('dob','Date of Birth',bio.dob,'e.g. 12/05/2015')}
+  ${f('state','State of Origin',bio.state)}
+  <label>Sex<select id="ad_sex"><option value="">—</option><option value="Male" ${/^m/i.test(bio.sex||'')?'selected':''}>Male</option><option value="Female" ${/^f/i.test(bio.sex||'')?'selected':''}>Female</option></select></label>
+  ${f('svc','SVC No',bio.svc)}
+  ${f('rank','Rank',bio.rank)}
+  ${f('unit','Unit',bio.unit)}
+  ${f('learn','I learn (Service personnel only)',bio.learn)}
+  ${f('address','Home Address',bio.address)}
+  ${f('pname','Parent / Guardian full name',bio.pname||bio.parentName||'')}
+  ${f('rel','Relationship — is/are my _____ (e.g. son, daughter, ward)',bio.rel)}
+  ${f('decl','Extra declaration line (optional)','')}
+  ${f('phone','Phone No',bio.phone)}
+  ${f('rec','Recommended for admission (official use)','')}
+  ${f('osig','Official signature name','')}
+  ${f('odate','Official date','')}
+  ${f('stamp','Stamp note','')}
+  <label style="font-weight:normal"><input type="checkbox" id="ad_save" style="width:auto" checked> Also save these bio details to the student profile</label>
+  <p class="err" id="ad_er"></p>
+  <button class="p" id="ad_gen">Generate Form</button>
+  <button class="p" id="ad_x" style="background:#666">Cancel</button>
+  </div>
+  <div id="ad_preview"></div>`;
+  $('#ad_x').onclick=()=>{$('#pv').innerHTML='';};
+  $('#ad_gen').onclick=async()=>{
+    const g=k=>($('#ad_'+k)?.value||'').trim();
+    const u={
+      ...base,
+      name:g('name')||base.name,
+      photoData:base.photoData,
+      bio:{
+        ...(base.bio||{}),
+        dob:g('dob'), state:g('state'), sex:g('sex'),
+        svc:g('svc'), rank:g('rank'), unit:g('unit'), learn:g('learn'),
+        address:g('address'), pname:g('pname'), rel:g('rel'), phone:g('phone'),
+        decl:g('decl'), rec:g('rec'), osig:g('osig'), odate:g('odate'), stamp:g('stamp')
+      }
+    };
+    if($('#ad_save')?.checked){
+      try{
+        await updateDoc(doc(db,'users',id),{
+          name:u.name,
+          bio:{...(base.bio||{}),dob:u.bio.dob,state:u.bio.state,sex:u.bio.sex,svc:u.bio.svc,rank:u.bio.rank,unit:u.bio.unit,learn:u.bio.learn,address:u.bio.address,pname:u.bio.pname,rel:u.bio.rel,phone:u.bio.phone}
+        });
+        U[id]={...U[id],name:u.name,bio:u.bio};
+      }catch(e){$('#ad_er').textContent='Saved form only (profile update failed: '+(e.message||e.code)+')';}
+    }
+    $('#ad_preview').innerHTML=admissionHTML(u)+printBtn()+' '+(typeof pdfBtn==='function'?pdfBtn():'');
+    bindPrint();
+    $('#ad_preview').scrollIntoView({behavior:'smooth'});
+  };
 });
 $('#xl').onclick=()=>{const q=c=>'"'+String(c??'').replace(/"/g,'""')+'"';dl(role+'s.csv',['ID,Name,Email,Class,Sections,Status',...Object.values(U).map(x=>[x.loginId,x.name,x.email,x.classId,secsOf(x),isS?statusOf(x):(x.active===false?'Deactivated':'Active')].map(q).join(','))].join('\n'),'text/csv');};
 $('#sq').oninput=e=>A.querySelectorAll('tr[data-s]').forEach(r=>r.style.display=r.dataset.s.includes(e.target.value.toLowerCase())?'':'none');
